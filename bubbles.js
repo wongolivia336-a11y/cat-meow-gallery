@@ -200,7 +200,8 @@
      ------------------------------------------------------------------ */
 
   function makeSprite(item, t, showText) {
-    const pad = 16;
+    // 留白要够放下收藏的荧光圈（画在 1.08r）和它自身的笔宽
+    const pad = Math.max(18, t.radius * 0.18);
     const size = (t.radius + pad) * 2;
     const off = document.createElement("canvas");
     off.width = Math.round(size * dpr);
@@ -237,11 +238,8 @@
     c.stroke();
     c.restore();
 
-    // 收藏标记：一颗手绘小星。
-    // 放右下角 —— 右上角是耳朵的地盘，之前两者叠在了一起
-    if (item.favorite) {
-      drawStar(c, cx + t.radius * 0.52, cy + t.radius * 0.5, t.radius * 0.15);
-    }
+    // 收藏：外圈一道荧光笔。不占泡泡内部空间，也不会跟耳朵抢位置
+    if (item.favorite) drawHighlightRing(c, cx, cy, t.radius, t.seed);
 
     /*
       泡泡本身就是多米的脸。
@@ -253,9 +251,71 @@
       文字要读，读就是认知负担；表情是"看"的，一眼就过。
       标题保留在无障碍镜像和控制界面里，信息没丢。
     */
-    if (showText) drawDomiFace(c, cx, cy, t.radius, item.mood);
+    if (showText) drawDomiFace(c, cx, cy, t.radius, item.mood, { seed: t.seed });
 
     return { canvas: off, size, half: size / 2 };
+  }
+
+  /* ------------------------------------------------------------------
+     手绘笔触工具
+     ------------------------------------------------------------------
+     代码画的"手绘"之所以一眼假，是因为它太完美：
+     等腰三角形的耳朵、正圆的眼睛、等距等长的胡须、全程等宽的线。
+
+     这几个函数就是用来主动破坏这些完美的：
+       makeRng    —— 有种子的随机，同一颗泡泡每次重绘都长一样
+       jitterLine —— 线条中段抖动（端点不抖，否则笔画接不上）
+       inkStroke  —— 分段描边，每段宽度不同 = 笔压：起笔重、收笔轻
+     ------------------------------------------------------------------ */
+
+  function makeRng(seed) {
+    let a = (seed >>> 0) || 1;
+    return function () {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function jitterLine(x1, y1, x2, y2, rng, amp, steps) {
+    const pts = [];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      // sin 包络：两端归零，中间最抖 —— 端点必须准，否则笔画之间会裂开
+      const k = Math.sin(t * Math.PI) * amp * (rng() - 0.5) * 2;
+      pts.push({ x: x1 + dx * t + nx * k, y: y1 + dy * t + ny * k });
+    }
+    return pts;
+  }
+
+  function jitterArc(cx, cy, r, a0, a1, rng, amp, steps) {
+    const pts = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const t = i / steps;
+      const a = a0 + (a1 - a0) * t;
+      const rr = r + (rng() - 0.5) * 2 * amp;
+      pts.push({ x: cx + Math.cos(a) * rr, y: cy + Math.sin(a) * rr });
+    }
+    return pts;
+  }
+
+  function inkStroke(c, pts, rng, baseWidth) {
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      const t = i / Math.max(1, pts.length - 2);
+      // 起笔重、收笔轻，再叠一点随机 —— 这就是代码最缺的"笔压"
+      const w = baseWidth * (1.3 - t * 0.8) * (0.82 + rng() * 0.36);
+      c.lineWidth = Math.max(0.7, w);
+      c.beginPath();
+      c.moveTo(pts[i].x, pts[i].y);
+      c.lineTo(pts[i + 1].x, pts[i + 1].y);
+      c.stroke();
+    }
   }
 
   /* ------------------------------------------------------------------
@@ -289,110 +349,130 @@
 
   function drawDomiFace(c, cx, cy, r, mood, opts) {
     const f = faceFor(mood);
+    const o = opts || {};
     /*
       泡泡上的脸要淡（它在半透明填色之上，太重会跟外框抢）；
-      但当成独立小图标用时必须加重，否则 26px 下看着就是一团灰。
+      当成独立小图标用时必须加重，否则 30px 下看着就是一团灰。
     */
-    const bold = opts && opts.boldest;
-    const ink = bold ? "rgba(58, 52, 46, 0.95)" : "rgba(58, 52, 46, 0.78)";
+    const bold = o.boldest;
+    const ink = bold ? "rgba(58, 52, 46, 0.95)" : "rgba(58, 52, 46, 0.8)";
+    const rng = makeRng(hash(String(mood)) + (o.seed || 0) * 7919);
+
+    // 抖动幅度和线宽都跟半径走，缩放到任何尺寸手感一致
+    const amp = r * (bold ? 0.035 : 0.03);
+    const w = bold ? Math.max(1.6, r * 0.09) : Math.max(1.5, r * 0.045);
 
     c.save();
     c.translate(cx, cy);
-    c.rotate(f.tilt); // 一点点歪头，比端正可爱得多
+    // 歪头。基础倾角再叠一点随机 —— 端正是"排版"，歪才是"画的"
+    c.rotate(f.tilt + (rng() - 0.5) * 0.14);
     c.strokeStyle = ink;
     c.fillStyle = ink;
-    c.lineWidth = bold ? Math.max(1.5, r * 0.085) : Math.max(1.4, r * 0.032);
     c.lineCap = "round";
     c.lineJoin = "round";
 
-    // 耳朵：从泡泡内侧顶出来的两个小三角。
-    // 位置要够高、够窄，否则会被读成"眉毛"而不是耳朵
+    /*
+      耳朵。左右刻意不一样高、不一样宽、不一样斜 ——
+      对称是"代码感"最大的来源，必须主动破坏。
+    */
     for (const side of [-1, 1]) {
-      const ex = side * r * 0.34;
-      const ey = -r * 0.56;
-      c.beginPath();
-      c.moveTo(ex - r * 0.13, ey + r * 0.15);
-      c.lineTo(ex + side * r * 0.015, ey - r * 0.16);
-      c.lineTo(ex + r * 0.13, ey + r * 0.12);
-      c.stroke();
+      const grow = 0.86 + rng() * 0.32;          // 这只耳朵整体大小
+      const lift = (rng() - 0.5) * r * 0.09;     // 高低差
+      const ex = side * r * (0.3 + rng() * 0.07);
+      const ey = -r * 0.55 + lift;
+      const halfW = r * 0.12 * grow;
+      const tipY = ey - r * 0.17 * grow;
+      const tipX = ex + side * r * 0.03 * (rng() - 0.2);
+
+      inkStroke(c, jitterLine(ex - halfW, ey + r * 0.14, tipX, tipY, rng, amp, 4), rng, w);
+      inkStroke(c, jitterLine(tipX, tipY, ex + halfW, ey + r * 0.12, rng, amp, 4), rng, w);
     }
 
+    // 眼睛：左右大小、高低都略微不同
     const eyeY = -r * 0.04;
-    const eyeX = r * 0.26;
-    const eyeR = r * 0.09;
-
     for (const side of [-1, 1]) {
-      const x = side * eyeX;
-      c.beginPath();
+      const x = side * r * (0.24 + rng() * 0.05);
+      const y = eyeY + (rng() - 0.5) * r * 0.05;
+      const er = r * (0.085 + rng() * 0.03);
+
       if (f.eye === "closed" || (f.eye === "wonk" && side < 0)) {
-        // 一条横线 = 闭着的眼
-        c.moveTo(x - eyeR, eyeY);
-        c.lineTo(x + eyeR, eyeY);
+        inkStroke(c, jitterLine(x - er, y, x + er, y + (rng() - 0.5) * r * 0.02, rng, amp, 3), rng, w);
       } else if (f.eye === "happy") {
-        // 向上的弧 = 笑眼
-        c.arc(x, eyeY + eyeR * 0.6, eyeR, Math.PI * 1.15, Math.PI * 1.85);
+        inkStroke(c, jitterArc(x, y + er * 0.6, er, Math.PI * 1.12, Math.PI * 1.88, rng, amp * 0.8, 6), rng, w);
       } else if (f.eye === "cross") {
-        // 斜下的眉毛式怒眼
-        c.moveTo(x - eyeR, eyeY - eyeR * 0.7);
-        c.lineTo(x + eyeR, eyeY + eyeR * 0.3);
+        inkStroke(c, jitterLine(x - er, y - er * 0.7, x + er, y + er * 0.3, rng, amp, 3), rng, w);
       } else {
-        // 实心圆 = 睁着的眼
-        c.arc(x, eyeY, eyeR * (f.eye === "wide" ? 1.05 : 0.85), 0, Math.PI * 2);
-        c.fill();
-        continue;
+        /*
+          睁开的眼睛用"绕一圈的短线"堆出来，而不是 fill 一个正圆。
+          正圆一眼就是电脑画的；绕圈填的黑点边缘毛毛的，像笔尖戳出来的。
+        */
+        const dotR = er * (f.eye === "wide" ? 0.95 : 0.8);
+        c.lineWidth = Math.max(1, dotR * 0.85);
+        for (let k = 0; k < 3; k += 1) {
+          const pts = jitterArc(x, y, dotR * (0.3 + k * 0.22), 0, Math.PI * 2, rng, dotR * 0.12, 9);
+          c.beginPath();
+          pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+          c.stroke();
+        }
       }
-      c.stroke();
     }
 
     // 嘴
-    const my = r * 0.26;
-    c.beginPath();
+    const my = r * (0.24 + rng() * 0.04);
     if (f.mouth === "open") {
-      c.ellipse(0, my, r * 0.09, r * 0.11, 0, 0, Math.PI * 2);
-      c.stroke();
+      const rx = r * (0.075 + rng() * 0.035);
+      const ry = rx * (1.05 + rng() * 0.35);
+      const pts = jitterArc(0, my, 1, 0, Math.PI * 2, rng, 0, 12)
+        .map((p) => ({ x: p.x * rx + (rng() - 0.5) * amp, y: (p.y - my) * ry + my + (rng() - 0.5) * amp }));
+      inkStroke(c, pts, rng, w * 0.9);
     } else if (f.mouth === "w") {
-      // ω 形，猫嘴的经典画法
-      c.moveTo(-r * 0.13, my - r * 0.03);
-      c.quadraticCurveTo(-r * 0.065, my + r * 0.08, 0, my - r * 0.02);
-      c.quadraticCurveTo(r * 0.065, my + r * 0.08, r * 0.13, my - r * 0.03);
-      c.stroke();
+      // ω 形猫嘴，两个弧刻意不一样大
+      const s1 = r * (0.055 + rng() * 0.025);
+      const s2 = r * (0.055 + rng() * 0.025);
+      inkStroke(c, jitterArc(-s1, my, s1, Math.PI, Math.PI * 2, rng, amp * 0.7, 6), rng, w * 0.9);
+      inkStroke(c, jitterArc(s2, my, s2, Math.PI, Math.PI * 2, rng, amp * 0.7, 6), rng, w * 0.9);
     } else {
-      c.moveTo(-r * 0.06, my);
-      c.lineTo(r * 0.06, my);
-      c.stroke();
+      inkStroke(c, jitterLine(-r * 0.06, my, r * 0.06, my + (rng() - 0.5) * r * 0.02, rng, amp, 3), rng, w * 0.9);
     }
 
-    // 胡须：每边两根，很淡。可爱度的最后一点，多了就吵
-    c.globalAlpha = 0.42;
+    // 胡须：每边 2~3 根，长短角度都不一样。多了会吵，所以压得很淡
+    c.globalAlpha = 0.4;
     for (const side of [-1, 1]) {
-      for (const dy of [-r * 0.04, r * 0.06]) {
-        c.beginPath();
-        c.moveTo(side * r * 0.44, my - r * 0.1 + dy);
-        c.lineTo(side * r * 0.72, my - r * 0.16 + dy);
-        c.stroke();
+      const count = rng() > 0.45 ? 3 : 2;
+      for (let i = 0; i < count; i += 1) {
+        const y0 = my - r * 0.16 + i * r * 0.09 + (rng() - 0.5) * r * 0.03;
+        const len = r * (0.24 + rng() * 0.12);
+        const rise = r * (0.03 + rng() * 0.07);
+        inkStroke(
+          c,
+          jitterLine(side * r * 0.42, y0, side * (r * 0.42 + len), y0 - rise, rng, amp * 1.2, 4),
+          rng,
+          w * 0.7
+        );
       }
     }
 
     c.restore();
   }
 
-  function drawStar(c, x, y, r) {
+  /*
+    收藏标记：用荧光笔在外面圈一圈。
+    之前那颗五角星太"图标"了 —— 几何完美、和手绘语言打架，还老跟耳朵撞位置。
+    圈一下更贴合这个产品的语感：收藏就是"我把这颗圈出来了"。
+    起止角刻意错开、不闭合 —— 手画的圈从来收不拢。
+  */
+  function drawHighlightRing(c, cx, cy, r, seed) {
+    const rng = makeRng(seed || 1);
     c.save();
-    c.beginPath();
-    for (let i = 0; i < 5; i += 1) {
-      const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-      const a2 = a + Math.PI / 5;
-      c[i ? "lineTo" : "moveTo"](x + Math.cos(a) * r, y + Math.sin(a) * r);
-      c.lineTo(x + Math.cos(a2) * r * 0.45, y + Math.sin(a2) * r * 0.45);
-    }
-    c.closePath();
-    c.fillStyle = "#f9c22e";
-    c.fill();
-    c.strokeStyle = "#443e37";
-    c.lineWidth = 1.2;
-    c.stroke();
+    c.strokeStyle = "rgba(249, 194, 46, 0.9)";
+    c.lineCap = "round";
+    const a0 = -Math.PI * 0.5 + (rng() - 0.5) * 1.2;
+    const a1 = a0 + Math.PI * 2 * (0.92 + rng() * 0.12);
+    const pts = jitterArc(cx, cy, r * 1.08, a0, a1, rng, r * 0.025, 38);
+    inkStroke(c, pts, rng, Math.max(2.2, r * 0.08));
     c.restore();
   }
+
 
 
   /* ------------------------------------------------------------------

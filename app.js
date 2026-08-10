@@ -69,8 +69,9 @@ const state = {
   liveCtx: null,
   liveAnalyser: null,
   liveRaf: null,
+  recordChain: null,
   // 用户一般只有一只猫，所以猫名是一次性设置，不是每条录音的字段
-  settings: { catName: "多米", customMoods: [] },
+  settings: { catName: "多米", customMoods: [], noiseSuppression: false },
   restTimer: null,
   isResting: false,
   controlMode: false,
@@ -325,11 +326,28 @@ async function startRecording() {
   }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        /*
+          ⚠️ 默认关掉浏览器自带降噪。
+          它的模型是针对人声训练的 —— 判断"什么该保留"的标准是人类语音的频谱，
+          猫叫很可能被整段判成噪声消掉。这是这类项目的典型翻车点。
+          做成可开关，你自己 A/B 一次就知道对多米有没有伤害。
+        */
+        noiseSuppression: Boolean(state.settings.noiseSuppression),
+        echoCancellation: false,
+        autoGainControl: false,
+        channelCount: 1
+      }
+    });
     const mimeType = pickRecorderMimeType();
     state.chunks = [];
     state.recordingStream = stream;
-    state.mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+    // 麦克风 → 高通 → 提亮 → 限幅 → 录音器
+    const chain = buildRecordingChain(stream);
+    state.recordChain = chain;
+    state.mediaRecorder = new MediaRecorder(chain.stream, mimeType ? { mimeType } : undefined);
     state.recordingStartedAt = Date.now();
     let recorderFailed = false;
 
@@ -360,15 +378,18 @@ async function startRecording() {
       }
 
       const audioUrl = URL.createObjectURL(blob);
-      const waveform = await analyzeAudioBlob(blob);
+      const analysis = await analyzeRecording(blob);
       openSaveDraft({
         id: makeId(),
         title: suggestTitle(),
         audioUrl,
         audioBlob: blob,
-        duration: Math.max(duration, 1),
+        // 用实际有声的长度，而不是"按住按钮多久" —— 前后的静音不算数
+        duration: Math.max(Math.round(analysis.speechDuration) || duration, 1),
         source: "recorded",
-        waveform
+        waveform: analysis.waveform,
+        trimStart: analysis.trimStart,
+        trimEnd: analysis.trimEnd
       });
     });
 
@@ -421,6 +442,71 @@ function completeMockRecording() {
     source: "mock",
     waveform: generateWaveform()
   });
+}
+
+/* ====================================================================
+   录音处理链
+   --------------------------------------------------------------------
+   刻意不上 RNNoise 之类的重型降噪：那些模型都是按人声训练的，
+   对猫叫是"误伤"风险大于收益。对这个产品真正有用的是下面三件事，
+   全部是 Web Audio 原生节点，零依赖。
+
+   注意这条链插在 麦克风 和 MediaRecorder 之间，是实时处理 ——
+   录完的 blob 本身就是处理过的，不需要重新编码
+   （浏览器没法把 AudioBuffer 再编回 opus，重编码只能退化成体积大 10 倍的 WAV）。
+   ==================================================================== */
+
+function buildRecordingChain(stream) {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return { stream, analyser: null, close() {} };
+
+  try {
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+
+    /*
+      1) 高通 120Hz —— 干掉空调、风扇、桌面震动、电流声这些低频轰鸣。
+      猫叫的基频在 700–1500Hz，完全不受影响。
+      这是唯一"绝对安全"的降噪：它不做任何判断，只是切掉一段猫用不到的频率。
+    */
+    const highpass = ctx.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 120;
+    highpass.Q.value = 0.7;
+
+    /*
+      2) 提亮 —— 比降噪重要得多。
+      猫通常离麦克风远、叫声轻，原样录下来小到听不见，
+      戳破泡泡却几乎没声音，整个交互就废了。
+    */
+    const boost = ctx.createGain();
+    boost.gain.value = 2.6;
+
+    /*
+      3) 限幅 —— 兜住提亮带来的爆音。
+      没有它，一声近距离的大叫会直接削顶变成刺啦声。
+      attack 要非常短(2ms)，猫叫的起音很陡，慢了就来不及压住第一下。
+    */
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
+
+    const dest = ctx.createMediaStreamDestination();
+
+    source.connect(highpass);
+    highpass.connect(boost);
+    boost.connect(limiter);
+    limiter.connect(dest);
+    // ⚠️ 绝不能连 ctx.destination —— 那会把麦克风的声音外放出来，直接啸叫
+
+    return { stream: dest.stream, ctx, close: () => ctx.close().catch(() => {}) };
+  } catch (error) {
+    // 处理链搭不起来就退回原始流，宁可没处理也不能录不成
+    return { stream, analyser: null, close() {} };
+  }
 }
 
 /* ====================================================================
@@ -535,6 +621,10 @@ function pickRecorderMimeType() {
 }
 
 function stopRecordingStream() {
+  if (state.recordChain) {
+    state.recordChain.close();
+    state.recordChain = null;
+  }
   if (!state.recordingStream) return;
   state.recordingStream.getTracks().forEach((track) => track.stop());
   state.recordingStream = null;
@@ -612,6 +702,26 @@ async function playItem(item) {
   if (audioUrl) {
     const audio = new Audio(audioUrl);
     state.currentAudio = audio;
+
+    /*
+      应用首尾静音裁剪。
+      这一步对手感的影响比降噪大得多 —— 泡泡"啪"一下破了，
+      如果中间隔着半秒空白才出声，那一瞬间的因果关系就断了，治愈感也没了。
+    */
+    const from = Number(item.trimStart) || 0;
+    const to = Number(item.trimEnd) || 0;
+    if (from > 0) {
+      audio.addEventListener("loadedmetadata", () => { audio.currentTime = from; }, { once: true });
+    }
+    if (to > from) {
+      audio.addEventListener("timeupdate", () => {
+        if (audio.currentTime >= to) {
+          audio.pause();
+          finishPlay(item);
+        }
+      });
+    }
+
     audio.addEventListener("ended", () => finishPlay(item));
     audio.addEventListener("error", () => {
       stopCurrentSound();
@@ -1126,7 +1236,9 @@ function normalizeItem(item) {
     playCount: Number(item.playCount) || 0,
     createdAt: item.createdAt || new Date().toISOString(),
     color: item.color || getMood(mood).color,
-    waveform: Array.isArray(item.waveform) ? item.waveform : generateWaveform(id)
+    waveform: Array.isArray(item.waveform) ? item.waveform : generateWaveform(id),
+    trimStart: Number(item.trimStart) || 0,
+    trimEnd: Number(item.trimEnd) || 0
   };
 }
 
@@ -1193,28 +1305,81 @@ function generateWaveform(seed = String(Math.random())) {
   });
 }
 
-async function analyzeAudioBlob(blob) {
+/* ====================================================================
+   录完之后的分析：波形 + 首尾静音位置
+
+   为什么只算裁剪点、不真的裁掉音频：
+   浏览器没有把 AudioBuffer 编回 opus 的能力，真裁就只能存 WAV，
+   体积要大十倍。而 <audio> 本来就支持从任意位置开始播、提前停 ——
+   所以把裁剪点当元数据存起来，播放时应用，效果一样且零成本。
+   ==================================================================== */
+
+const EMPTY_ANALYSIS = { waveform: generateWaveform(), trimStart: 0, trimEnd: 0, speechDuration: 0 };
+
+async function analyzeRecording(blob) {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext || !blob.size) return generateWaveform(String(blob.size));
+  if (!AudioContext || !blob.size) {
+    return { ...EMPTY_ANALYSIS, waveform: generateWaveform(String(blob.size)) };
+  }
 
   const ctx = new AudioContext();
   try {
     const buffer = await blob.arrayBuffer();
     const audioBuffer = await ctx.decodeAudioData(buffer.slice(0));
     const channel = audioBuffer.getChannelData(0);
-    const bucketSize = Math.max(1, Math.floor(channel.length / 12));
+    const rate = audioBuffer.sampleRate;
 
-    return Array.from({ length: 12 }, (_, index) => {
-      const start = index * bucketSize;
-      const end = Math.min(channel.length, start + bucketSize);
-      let total = 0;
-      for (let cursor = start; cursor < end; cursor += 1) {
-        total += Math.abs(channel[cursor]);
-      }
-      return Math.max(0.16, Math.min(0.95, total / Math.max(1, end - start) * 3.6));
+    // 20ms 一格算能量。再细会被单个采样的毛刺带偏，再粗会切掉猫叫的起音
+    const win = Math.max(1, Math.round(rate * 0.02));
+    const frames = [];
+    for (let i = 0; i < channel.length; i += win) {
+      let sum = 0;
+      const end = Math.min(channel.length, i + win);
+      for (let j = i; j < end; j += 1) sum += channel[j] * channel[j];
+      frames.push(Math.sqrt(sum / Math.max(1, end - i)));
+    }
+
+    /*
+      阈值取"底噪的 3 倍"和"峰值的 6%"里更大的那个。
+      只看峰值百分比，安静房间里的轻声呼噜会被整段当成静音切掉；
+      只看底噪倍数，嘈杂环境里又几乎切不掉东西。两个都要。
+    */
+    const sorted = [...frames].sort((a, b) => a - b);
+    const floor = sorted[Math.floor(sorted.length * 0.1)] || 0;
+    const peak = sorted[sorted.length - 1] || 0;
+    const threshold = Math.max(floor * 3, peak * 0.06);
+
+    let first = frames.findIndex((v) => v > threshold);
+    let last = -1;
+    for (let i = frames.length - 1; i >= 0; i -= 1) {
+      if (frames[i] > threshold) { last = i; break; }
+    }
+
+    const total = audioBuffer.duration;
+    let trimStart = 0;
+    let trimEnd = total;
+
+    if (first >= 0 && last > first) {
+      // 前留 60ms 免得切掉起音的第一下，后留 200ms 保住尾音的自然衰减
+      trimStart = Math.max(0, (first * win) / rate - 0.06);
+      trimEnd = Math.min(total, ((last + 1) * win) / rate + 0.2);
+    }
+
+    // 波形只统计有声那一段，否则一半格子都是平的
+    const from = Math.floor(trimStart * rate);
+    const to = Math.max(from + 1, Math.floor(trimEnd * rate));
+    const bucket = Math.max(1, Math.floor((to - from) / 12));
+    const waveform = Array.from({ length: 12 }, (_, index) => {
+      const s = from + index * bucket;
+      const e = Math.min(to, s + bucket);
+      let sum = 0;
+      for (let c = s; c < e; c += 1) sum += Math.abs(channel[c]);
+      return Math.max(0.16, Math.min(0.95, (sum / Math.max(1, e - s)) * 3.6));
     });
+
+    return { waveform, trimStart, trimEnd, speechDuration: trimEnd - trimStart };
   } catch (error) {
-    return generateWaveform(`${blob.size}:${blob.type}`);
+    return { ...EMPTY_ANALYSIS, waveform: generateWaveform(`${blob.size}:${blob.type}`) };
   } finally {
     ctx.close();
   }
