@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>猫猫声音泡泡馆</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="screen-glow" aria-hidden="true"></div>
+
+    <div class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Cat Sound Bubble Gallery</p>
+          <h1>猫猫声音泡泡馆</h1>
+          <p class="header-copy" id="collectionCount">已吹出 0 颗声音泡泡</p>
+        </div>
+        <img class="mascot" src="assets/cat-mascot.png" alt="手绘猫咪坐在声音泡泡旁" />
+      </header>
+
+      <main>
+        <section class="recorder-panel" aria-labelledby="recordTitle">
+          <div class="recorder-copy">
+            <p class="eyebrow">Blow a mew bubble</p>
+            <h2 id="recordTitle">吹一颗猫声泡泡</h2>
+            <p id="recordHint">点一下开始吹泡泡，再点一下封口。猫声越明显，泡泡越活跃。</p>
+          </div>
+
+          <div class="record-orb-wrap" aria-hidden="true">
+            <div class="record-orb" id="recordBubble">
+              <span class="record-orb-core"></span>
+            </div>
+          </div>
+
+          <div class="record-controls">
+            <button class="record-button" id="recordButton" type="button" aria-pressed="false">
+              <span class="record-dot"></span>
+              <span id="recordButtonText">吹泡泡</span>
+            </button>
+            <div class="record-meta" aria-live="polite">
+              <span id="recordTimer">00:00</span>
+              <span id="recordState">泡泡纸还没沾水</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="toolbar" aria-label="泡泡筛选">
+          <div class="search-wrap">
+            <label for="searchInput">搜泡泡</label>
+            <input id="searchInput" type="search" placeholder="猫咪名、标签、半夜叫" />
+          </div>
+          <div class="chips" id="moodChips" role="list" aria-label="声音类型"></div>
+          <button class="small-toggle" id="favoriteOnly" type="button" aria-pressed="false">只看星点泡泡</button>
+        </section>
+
+        <section class="gallery-head">
+          <div>
+            <p class="eyebrow">Old screen saver mode</p>
+            <h2>漂浮中的声音标本</h2>
+          </div>
+          <select id="sortSelect" aria-label="排序方式">
+            <option value="newest">最新吹出</option>
+            <option value="popular">反复戳过</option>
+          </select>
+        </section>
+
+        <section class="gallery bubble-stage" id="gallery" aria-label="猫猫声音泡泡列表"></section>
+      </main>
+    </div>
+
+    <dialog class="save-dialog" id="saveDialog">
+      <form method="dialog" id="saveForm">
+        <button class="dialog-close" value="cancel" aria-label="关闭保存面板">×</button>
+        <p class="eyebrow">Seal the bubble</p>
+        <h2>泡泡封口前</h2>
+        <div class="form-grid">
+          <label>
+            泡泡名字
+            <input name="title" maxlength="24" required />
+          </label>
+          <label>
+            来自哪只猫
+            <input name="catName" maxlength="16" required />
+          </label>
+          <label>
+            声音类型
+            <select name="mood"></select>
+          </label>
+          <label>
+            小标签
+            <input name="tags" maxlength="40" placeholder="奶音, 半夜, 饭盆" />
+          </label>
+          <label class="span-all">
+            这颗泡泡的来历
+            <textarea name="note" rows="3" maxlength="90"></textarea>
+          </label>
+        </div>
+        <div class="dialog-actions">
+          <button class="ghost-button" value="cancel" type="button" id="discardDraft">吹散</button>
+          <button class="primary-button" value="default" type="submit">封口并飘走</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
