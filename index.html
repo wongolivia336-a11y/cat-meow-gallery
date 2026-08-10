@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#fdfcf9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>猫猫声音泡泡馆</title>
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=5" />
   </head>
   <body>
     <!--
@@ -60,8 +60,12 @@
 
       <section class="filter-panel" id="filterPanel" hidden>
         <div class="search-wrap">
+          <label for="catNameInput">你家猫的名字</label>
+          <input id="catNameInput" maxlength="16" placeholder="小橘" />
+        </div>
+        <div class="search-wrap">
           <label for="searchInput">搜泡泡</label>
-          <input id="searchInput" type="search" placeholder="猫咪名、标签、半夜叫" />
+          <input id="searchInput" type="search" placeholder="标签、半夜叫、罐头" />
         </div>
         <div class="chips" id="moodChips" role="list" aria-label="声音类型"></div>
         <div class="filter-row">
@@ -99,10 +103,6 @@
             <input name="title" maxlength="24" required />
           </label>
           <label>
-            来自哪只猫
-            <input name="catName" maxlength="16" required />
-          </label>
-          <label>
             声音类型
             <select name="mood"></select>
           </label>
@@ -126,7 +126,7 @@
 
     <script src="vendor/matter.min.js"></script>
     <script src="vendor/rough.js"></script>
-    <script src="bubbles.js?v=3"></script>
-    <script src="app.js?v=3"></script>
+    <script src="bubbles.js?v=5"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>

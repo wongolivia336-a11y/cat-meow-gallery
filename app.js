@@ -1,4 +1,7 @@
 const STORAGE_KEY = "cat-mew-gallery:v1";
+const SETTINGS_KEY = "cat-mew-gallery:settings";
+// 空闲多久之后进入休息模式（隐藏所有 UI，只剩泡泡）
+const REST_IDLE_MS = 4000;
 const AUDIO_DB_NAME = "cat-mew-gallery-audio";
 const AUDIO_DB_VERSION = 1;
 const AUDIO_STORE_NAME = "audioBlobs";
@@ -57,7 +60,11 @@ const state = {
   objectUrls: new Map(),
   liveCtx: null,
   liveAnalyser: null,
-  liveRaf: null
+  liveRaf: null,
+  // 用户一般只有一只猫，所以猫名是一次性设置，不是每条录音的字段
+  settings: { catName: "" },
+  restTimer: null,
+  isResting: false
 };
 
 const els = {};
@@ -67,6 +74,7 @@ document.addEventListener("DOMContentLoaded", init);
 function init() {
   cacheElements();
   restore();
+  restoreSettings();
   renderMoodChips();
   populateMoodSelect();
   bindEvents();
@@ -97,6 +105,7 @@ function cacheElements() {
   els.filterPanel = document.querySelector("#filterPanel");
   els.fieldHint = document.querySelector("#fieldHint");
   els.searchInput = document.querySelector("#searchInput");
+  els.catNameInput = document.querySelector("#catNameInput");
   els.moodChips = document.querySelector("#moodChips");
   els.favoriteOnly = document.querySelector("#favoriteOnly");
   els.sortSelect = document.querySelector("#sortSelect");
@@ -119,6 +128,21 @@ function bindEvents() {
     state.filters.query = event.target.value;
     render();
   });
+
+  els.catNameInput.addEventListener("input", (event) => {
+    state.settings.catName = event.target.value.trim();
+    persistSettings();
+  });
+
+  /*
+    休息模式：空闲一会儿就把所有 UI 淡出，只剩泡泡。
+    ⚠️ 只监听 pointermove 和 keydown，故意不监听 pointerdown ——
+    因为"戳泡泡"正是休息本身，戳的时候把工具栏叫回来会破坏气氛。
+  */
+  window.addEventListener("pointermove", wakeUp, { passive: true });
+  window.addEventListener("keydown", wakeUp);
+  els.saveDialog.addEventListener("close", wakeUp);
+  scheduleRest();
 
   els.favoriteOnly.addEventListener("click", () => {
     state.filters.favoriteOnly = !state.filters.favoriteOnly;
@@ -162,6 +186,47 @@ function bindEvents() {
     els.saveDialog.close();
     showToast("先放回空气里。");
   });
+}
+
+/* ====================================================================
+   休息模式
+   这不是"省电"，是产品定位：工作间隙的治愈时刻。
+   休息的时候不该看见搜索框、筛选器和按钮 —— 那些是工具的语言。
+   ==================================================================== */
+
+/*
+  两级关系：手机是采集端，电脑是屏保端。
+
+  这不只是布局差异，是行为差异 ——
+  在手机上你是"来录一段猫叫"的，把录音按钮自动藏起来是敌意设计；
+  在电脑上你是"工作累了看两眼"的，界面就该退场。
+  所以休息模式只在宽屏生效。
+*/
+function isAmbientDevice() {
+  return window.innerWidth >= 720;
+}
+
+function scheduleRest() {
+  window.clearTimeout(state.restTimer);
+  if (!isAmbientDevice()) return;
+  // 录音中和填表中不该进入休息，用户正在做正事
+  if (state.isRecording || els.saveDialog.open) return;
+  state.restTimer = window.setTimeout(() => {
+    state.isRecording || els.saveDialog.open ? scheduleRest() : enterRest();
+  }, REST_IDLE_MS);
+}
+
+function enterRest() {
+  state.isResting = true;
+  els.body.classList.add("is-resting");
+}
+
+function wakeUp() {
+  if (state.isResting) {
+    state.isResting = false;
+    els.body.classList.remove("is-resting");
+  }
+  scheduleRest();
 }
 
 async function startRecording() {
@@ -395,7 +460,6 @@ function openSaveDraft(draft) {
   };
 
   els.saveForm.elements.title.value = draft.title;
-  els.saveForm.elements.catName.value = state.meows[0]?.catName || "小橘";
   els.saveForm.elements.mood.value = pickDefaultMood();
   els.saveForm.elements.tags.value = draft.source === "mock" ? "模拟, 奶音" : "刚吹出, 奶音";
   els.saveForm.elements.note.value = draft.source === "recorded" ? "本次会话录到的一颗声音泡泡。" : "没有麦克风时生成的小小占位泡泡。";
@@ -415,7 +479,7 @@ async function saveDraft() {
   const item = {
     ...state.draft,
     title: cleanText(form.get("title"), "刚捡到的一声"),
-    catName: cleanText(form.get("catName"), "匿名小猫"),
+    catName: state.settings.catName || "我的猫",
     mood,
     tags: splitTags(form.get("tags")),
     note: cleanText(form.get("note"), "一颗还没写来历的小泡泡。"),
@@ -618,6 +682,24 @@ function getVisibleMeows() {
   }
 
   return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function restoreSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    if (saved.catName) state.settings.catName = String(saved.catName).slice(0, 16);
+  } catch (error) {
+    // 设置读坏了不该拦住 App 启动，用默认值继续
+  }
+  // 老数据里已经有猫名的话，直接沿用，别让用户再填一次
+  if (!state.settings.catName && state.meows[0]?.catName) {
+    state.settings.catName = state.meows[0].catName;
+  }
+  els.catNameInput.value = state.settings.catName;
+}
+
+function persistSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
 }
 
 function restore() {

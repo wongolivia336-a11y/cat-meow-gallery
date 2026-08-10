@@ -32,7 +32,8 @@
 
   let canvas, ctx, dpr = 1;
   let engine, runner, walls = [];
-  let bubbles = [];            // { item, body, sprite, radius, alpha, target, state, ... }
+  let bubbles = [];            // { key, item, instance, body, sprite, radius, alpha, target, state }
+  let lastItems = null;        // 最近一次 setItems 的入参，resize 时要拿它重算密度
   let pops = [];               // 正在播放的破裂特效
   let moods = [];
   let handlers = {};
@@ -90,6 +91,8 @@
     canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     buildWalls(w, h);
+    // 屏幕变大了就需要更多泡泡去填满，所以尺寸变化必须重算密度
+    if (lastItems) setItems(lastItems);
   }
 
   function buildWalls(w, h) {
@@ -140,20 +143,47 @@
      它从旧版 getBubbleTraits() 移植过来，保留了原来的手感。
      ------------------------------------------------------------------ */
 
-  function traitsOf(item) {
+  function traitsOf(item, instance) {
     const wave = item.waveform && item.waveform.length ? item.waveform : [0.5];
     const loudness = wave.reduce((s, v) => s + v, 0) / wave.length;
     const richness = wave.reduce((s, v, i) => s + Math.abs(v - (wave[i - 1] ?? v)), 0) / wave.length;
 
     const base = Math.min(window.innerWidth, window.innerHeight);
-    const scale = base < 520 ? 0.78 : 1; // 手机上整体缩小，否则三颗就占满屏
+    const scale = base < 520 ? 0.62 : 1;
 
+    /*
+      同一段录音的多颗泡泡要"像同一个声音的不同气泡"，而不是复制粘贴。
+      用 instance 参与散列，让每颗的尺寸、笔迹、色相都有细微差别。
+    */
+    const jitter = ((hash(`${item.id}#${instance}`) % 1000) / 1000 - 0.5) * 0.42;
     const mood = moods.find((m) => m.id === item.mood) || moods[0] || { hue: 200 };
+
     return {
-      radius: clamp((44 + item.duration * 4.2 + loudness * 26) * scale, 34 * scale, 96 * scale),
-      hue: (mood.hue + Math.round(richness * 60)) % 360,
-      seed: hash(item.id) % 9999
+      radius: clamp((40 + item.duration * 3.2 + loudness * 20) * (1 + jitter) * scale, 30 * scale, 94 * scale),
+      hue: (mood.hue + Math.round(richness * 60) + Math.round(jitter * 26)) % 360,
+      seed: hash(`${item.id}:${instance}`) % 9999
     };
+  }
+
+  /*
+    ------------------------------------------------------------------
+    密度与录音数量解耦
+    ------------------------------------------------------------------
+    产品事实：用户一般只有一只猫，可能只录了 5 段。
+    但"休息用的泡泡屏保"必须撑满整屏，否则画面是空的，治愈感就没了。
+    所以一段录音会生成多颗泡泡 —— 戳破其中一颗，不影响另外几颗还飘着。
+
+    目标覆盖率 0.46：太低画面空；太高泡泡会互相挤死，
+    物理上动不了，"漂浮"就变成了"堆叠"，治愈感立刻消失。
+  */
+  function targetCount(itemCount) {
+    if (!itemCount) return 0;
+    const area = window.innerWidth * window.innerHeight;
+    const base = Math.min(window.innerWidth, window.innerHeight);
+    const avgR = base < 520 ? 46 : 68;
+    const want = Math.round((area * 0.46) / (Math.PI * avgR * avgR));
+    // 上限 38：再多物理引擎和绘制都还撑得住，但视觉上已经太吵
+    return clamp(want, Math.min(itemCount, 6), 38);
   }
 
   /* ------------------------------------------------------------------
@@ -161,7 +191,7 @@
      这里是唯一会跑 rough.js 的地方，每颗泡泡一生只跑一次。
      ------------------------------------------------------------------ */
 
-  function makeSprite(item, t) {
+  function makeSprite(item, t, showText) {
     const pad = 16;
     const size = (t.radius + pad) * 2;
     const off = document.createElement("canvas");
@@ -180,7 +210,8 @@
       strokeWidth: 1.6,
       roughness: 1.5,      // 抖动强度
       bowing: 2.2,         // 线条的"弓形"弯曲量，doodle 感主要来自这个
-      fill: `hsla(${t.hue}, 82%, 86%, 0.5)`,
+      // 填色压到 0.3：泡泡要能透出后面的泡泡，堆叠起来才有"满屏"的层次
+      fill: `hsla(${t.hue}, 84%, 84%, 0.3)`,
       fillStyle: "solid",
       seed: t.seed
     });
@@ -203,21 +234,19 @@
       drawStar(c, cx + t.radius * 0.46, cy - t.radius * 0.5, t.radius * 0.15);
     }
 
-    // 文字：信息密度随泡泡大小变化 —— 小泡泡只放名字，大泡泡才放猫名和时长
-    c.save();
-    c.textAlign = "center";
-    c.fillStyle = "#3f3a34";
-    const titleSize = clamp(t.radius * 0.24, 10, 16);
-    c.font = `700 ${titleSize}px "Comic Sans MS", "YouYuan", "PingFang SC", sans-serif`;
-    c.fillText(ellipsis(c, item.title, t.radius * 1.5), cx, cy + titleSize * 0.35);
-
-    if (t.radius > 52) {
-      const metaSize = titleSize * 0.78;
-      c.font = `${metaSize}px "Comic Sans MS", "YouYuan", "PingFang SC", sans-serif`;
-      c.fillStyle = "#6a635a";
-      c.fillText(`${item.catName} · ${item.duration}s`, cx, cy + titleSize * 0.35 + metaSize * 1.5);
+    /*
+      猫名不再画在泡泡上 —— 用户一般只有一只猫，
+      每颗泡泡都写同一个名字是纯噪声。它现在是一次性设置里的事。
+    */
+    if (showText) {
+      c.save();
+      c.textAlign = "center";
+      c.fillStyle = "#4a443c";
+      const titleSize = clamp(t.radius * 0.2, 11, 17);
+      c.font = `700 ${titleSize}px "Comic Sans MS", "YouYuan", "PingFang SC", sans-serif`;
+      c.fillText(ellipsis(c, item.title, t.radius * 1.45), cx, cy + titleSize * 0.35);
+      c.restore();
     }
-    c.restore();
 
     return { canvas: off, size, half: size / 2 };
   }
@@ -253,38 +282,46 @@
      ------------------------------------------------------------------ */
 
   function setItems(items) {
-    const wanted = new Map(items.map((i) => [i.id, i]));
+    lastItems = items;
+    // 先算出这块屏幕需要多少颗泡泡，再把它们轮流分配给现有的录音
+    const total = targetCount(items.length);
+    const wanted = new Map();
+    for (let n = 0; n < total; n += 1) {
+      const item = items[n % items.length];
+      const instance = Math.floor(n / items.length);
+      wanted.set(`${item.id}#${instance}`, { item, instance });
+    }
 
-    // 已经不在列表里的：标记淡出，不立刻删（要给动画留时间）
+    // 已经不需要的：标记淡出，不立刻删（要给动画留时间）
     for (const b of bubbles) {
-      if (!wanted.has(b.item.id)) {
+      const w = wanted.get(b.key);
+      if (!w) {
         b.target = 0;
-      } else {
-        b.target = 1;
-        const next = wanted.get(b.item.id);
-        b.item = next;
-        /*
-          只在"画面上看得见的字段"变了时才重绘贴图。
-          playCount 每戳一次就变，但它不画在泡泡上 —— 如果把它算进 key，
-          每次播放都会重跑一次 rough.js，白白浪费。
-        */
-        const key = spriteKey(next);
-        if (key !== b.spriteKey) {
-          b.sprite = makeSprite(next, { radius: b.radius, hue: b.hue, seed: b.seed });
-          b.spriteKey = key;
-        }
+        continue;
+      }
+      b.target = 1;
+      b.item = w.item;
+      /*
+        只在"画面上看得见的字段"变了时才重绘贴图。
+        playCount 每戳一次就变，但它不画在泡泡上 —— 如果把它算进 key，
+        每次播放都会重跑一次 rough.js，白白浪费。
+      */
+      const key = spriteKey(w.item, b.instance);
+      if (key !== b.spriteKey) {
+        b.sprite = makeSprite(w.item, { radius: b.radius, hue: b.hue, seed: b.seed }, b.instance === 0);
+        b.spriteKey = key;
       }
     }
 
-    // 新出现的：造一颗
-    const existing = new Set(bubbles.map((b) => b.item.id));
-    for (const item of items) {
-      if (!existing.has(item.id)) spawn(item);
+    // 新出现的：造出来
+    const existing = new Set(bubbles.map((b) => b.key));
+    for (const [key, w] of wanted) {
+      if (!existing.has(key)) spawn(w.item, w.instance);
     }
   }
 
-  function spawn(item, atEdge) {
-    const t = traitsOf(item);
+  function spawn(item, instance, atEdge) {
+    const t = traitsOf(item, instance);
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     const x = atEdge ? (Math.random() < 0.5 ? t.radius + 4 : w - t.radius - 4) : rand(t.radius, w - t.radius);
@@ -300,13 +337,20 @@
     Composite.add(engine.world, body);
 
     bubbles.push({
+      key: `${item.id}#${instance}`,
       item,
+      instance,
       body,
       radius: t.radius,
       hue: t.hue,
       seed: t.seed,
-      sprite: makeSprite(item, t),
-      spriteKey: spriteKey(item),
+      /*
+        只有第一颗写字。
+        这是"休息"而不是"管理"：满屏重复同一个标题会变得很吵，
+        安静的泡泡里混一两颗有名字的，反而让人想去找。
+      */
+      sprite: makeSprite(item, t, instance === 0),
+      spriteKey: spriteKey(item, instance),
       alpha: 0,
       target: 1,
       state: "alive",
@@ -316,8 +360,10 @@
   }
 
   // 贴图只依赖这几个"画得出来"的字段
-  function spriteKey(item) {
-    return `${item.favorite}|${item.title}|${item.catName}|${item.duration}`;
+  function spriteKey(item, instance) {
+    return instance === 0
+      ? `${item.favorite}|${item.title}|${item.duration}`
+      : `${item.favorite}`;
   }
 
   /* ------------------------------------------------------------------
@@ -473,7 +519,7 @@
           // 重新吹一颗回来。从边缘进场，像刚飘进画面
           bubbles.splice(i, 1);
           handlers.onPopEnd(b.item);
-          spawnRespawn(b.item);
+          spawnRespawn(b.item, b.instance);
         }
         continue;
       }
@@ -490,7 +536,11 @@
       ctx.save();
       ctx.globalAlpha = Math.min(1, b.alpha);
       ctx.translate(p.x, p.y);
-      ctx.rotate(b.body.angle * 0.35); // 只跟随一点点旋转，全跟会晕
+      /*
+        故意不旋转。
+        泡泡是球体，转起来在视觉上不产生任何信息，
+        却会把烤进贴图的文字转到倒立 —— 纯亏。
+      */
       // ⬇︎ 每帧真正做的事就这一句：贴一张已经画好的图
       ctx.drawImage(b.sprite.canvas, -b.sprite.half, -b.sprite.half, b.sprite.size, b.sprite.size);
       ctx.restore();
@@ -537,8 +587,8 @@
     ctx.restore();
   }
 
-  function spawnRespawn(item) {
-    spawn(item, true);
+  function spawnRespawn(item, instance) {
+    spawn(item, instance, true);
     const b = bubbles[bubbles.length - 1];
     if (b) b.alpha = 0;
   }

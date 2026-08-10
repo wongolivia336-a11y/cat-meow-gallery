@@ -108,6 +108,24 @@ textarea {
   pointer-events: auto;
 }
 
+/*
+  休息模式：空闲 4 秒后所有 UI 淡出，只剩泡泡。
+  1.2s 的淡出是刻意的 —— 快了像"界面消失了"（故障感），
+  慢了才像"安静下来了"（放松感）。这半秒之差就是治愈感的全部。
+*/
+.app-shell {
+  transition: opacity 1200ms ease;
+}
+
+body.is-resting .app-shell {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.is-resting .app-shell * {
+  pointer-events: none;
+}
+
 .app-bar {
   display: flex;
   align-items: flex-start;
