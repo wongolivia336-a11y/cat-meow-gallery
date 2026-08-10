@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "electron": "^43.3.0"
+  },
+  "dependencies": {
+    "@fontsource/zcool-kuaile": "^5.3.0"
   }
 }

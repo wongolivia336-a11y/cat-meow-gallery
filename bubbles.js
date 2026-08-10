@@ -229,26 +229,127 @@
     c.stroke();
     c.restore();
 
-    // 收藏标记：一颗手绘小星
+    // 收藏标记：一颗手绘小星。
+    // 放右下角 —— 右上角是耳朵的地盘，之前两者叠在了一起
     if (item.favorite) {
-      drawStar(c, cx + t.radius * 0.46, cy - t.radius * 0.5, t.radius * 0.15);
+      drawStar(c, cx + t.radius * 0.52, cy + t.radius * 0.5, t.radius * 0.15);
     }
 
     /*
-      猫名不再画在泡泡上 —— 用户一般只有一只猫，
-      每颗泡泡都写同一个名字是纯噪声。它现在是一次性设置里的事。
+      泡泡本身就是多米的脸。
+      不是"在泡泡里放一个图标"，而是让泡泡成为那张脸 ——
+      不增加任何元素，却把可爱、个性、简约一次拿全。
+      6 种 mood 不是 6 个不同的物件，是同一张脸的 6 种表情。
+
+      标题不再画上去：休息模式下不该发生"阅读"行为。
+      文字要读，读就是认知负担；表情是"看"的，一眼就过。
+      标题保留在无障碍镜像和控制界面里，信息没丢。
     */
-    if (showText) {
-      c.save();
-      c.textAlign = "center";
-      c.fillStyle = "#4a443c";
-      const titleSize = clamp(t.radius * 0.2, 11, 17);
-      c.font = `700 ${titleSize}px "Comic Sans MS", "YouYuan", "PingFang SC", sans-serif`;
-      c.fillText(ellipsis(c, item.title, t.radius * 1.45), cx, cy + titleSize * 0.35);
-      c.restore();
-    }
+    if (showText) drawDomiFace(c, cx, cy, t.radius, item.mood);
 
     return { canvas: off, size, half: size / 2 };
+  }
+
+  /* ------------------------------------------------------------------
+     多米的脸
+     ------------------------------------------------------------------
+     刻意用普通 canvas 路径画，不走 rough.js：
+     五官尺度很小，抖动线条在这个尺寸下会糊成一团；
+     而且脸的线必须比泡泡轮廓更细更淡，否则两者会互相打架。
+     ------------------------------------------------------------------ */
+
+  // 每种 mood 一种表情。改这张表就等于改整套图标。
+  const FACES = {
+    sweet:   { eye: "happy",  mouth: "open",  tilt: -0.06 }, // 撒娇：眯眼张嘴
+    food:    { eye: "wide",   mouth: "open",  tilt: 0.04 },  // 饭盆：瞪大眼
+    sleepy:  { eye: "closed", mouth: "small", tilt: 0.1 },   // 困困：闭眼
+    purr:    { eye: "happy",  mouth: "w",     tilt: -0.03 }, // 呼噜：满足
+    mystery: { eye: "wonk",   mouth: "small", tilt: 0.12 },  // 疑惑：一只眼眯着
+    protest: { eye: "cross",  mouth: "open",  tilt: -0.1 }   // 抗议：皱眉
+  };
+
+  function drawDomiFace(c, cx, cy, r, mood) {
+    const f = FACES[mood] || FACES.sweet;
+    const ink = "rgba(58, 52, 46, 0.78)";
+
+    c.save();
+    c.translate(cx, cy);
+    c.rotate(f.tilt); // 一点点歪头，比端正可爱得多
+    c.strokeStyle = ink;
+    c.fillStyle = ink;
+    c.lineWidth = Math.max(1.4, r * 0.032);
+    c.lineCap = "round";
+    c.lineJoin = "round";
+
+    // 耳朵：从泡泡内侧顶出来的两个小三角。
+    // 位置要够高、够窄，否则会被读成"眉毛"而不是耳朵
+    for (const side of [-1, 1]) {
+      const ex = side * r * 0.34;
+      const ey = -r * 0.56;
+      c.beginPath();
+      c.moveTo(ex - r * 0.13, ey + r * 0.15);
+      c.lineTo(ex + side * r * 0.015, ey - r * 0.16);
+      c.lineTo(ex + r * 0.13, ey + r * 0.12);
+      c.stroke();
+    }
+
+    const eyeY = -r * 0.04;
+    const eyeX = r * 0.26;
+    const eyeR = r * 0.09;
+
+    for (const side of [-1, 1]) {
+      const x = side * eyeX;
+      c.beginPath();
+      if (f.eye === "closed" || (f.eye === "wonk" && side < 0)) {
+        // 一条横线 = 闭着的眼
+        c.moveTo(x - eyeR, eyeY);
+        c.lineTo(x + eyeR, eyeY);
+      } else if (f.eye === "happy") {
+        // 向上的弧 = 笑眼
+        c.arc(x, eyeY + eyeR * 0.6, eyeR, Math.PI * 1.15, Math.PI * 1.85);
+      } else if (f.eye === "cross") {
+        // 斜下的眉毛式怒眼
+        c.moveTo(x - eyeR, eyeY - eyeR * 0.7);
+        c.lineTo(x + eyeR, eyeY + eyeR * 0.3);
+      } else {
+        // 实心圆 = 睁着的眼
+        c.arc(x, eyeY, eyeR * (f.eye === "wide" ? 1.05 : 0.85), 0, Math.PI * 2);
+        c.fill();
+        continue;
+      }
+      c.stroke();
+    }
+
+    // 嘴
+    const my = r * 0.26;
+    c.beginPath();
+    if (f.mouth === "open") {
+      c.ellipse(0, my, r * 0.09, r * 0.11, 0, 0, Math.PI * 2);
+      c.stroke();
+    } else if (f.mouth === "w") {
+      // ω 形，猫嘴的经典画法
+      c.moveTo(-r * 0.13, my - r * 0.03);
+      c.quadraticCurveTo(-r * 0.065, my + r * 0.08, 0, my - r * 0.02);
+      c.quadraticCurveTo(r * 0.065, my + r * 0.08, r * 0.13, my - r * 0.03);
+      c.stroke();
+    } else {
+      c.moveTo(-r * 0.06, my);
+      c.lineTo(r * 0.06, my);
+      c.stroke();
+    }
+
+    // 胡须：每边两根，很淡。可爱度的最后一点，多了就吵
+    c.globalAlpha = 0.42;
+    for (const side of [-1, 1]) {
+      for (const dy of [-r * 0.04, r * 0.06]) {
+        c.beginPath();
+        c.moveTo(side * r * 0.44, my - r * 0.1 + dy);
+        c.lineTo(side * r * 0.72, my - r * 0.16 + dy);
+        c.stroke();
+      }
+    }
+
+    c.restore();
   }
 
   function drawStar(c, x, y, r) {
@@ -269,12 +370,6 @@
     c.restore();
   }
 
-  function ellipsis(c, text, maxWidth) {
-    if (c.measureText(text).width <= maxWidth) return text;
-    let s = text;
-    while (s.length > 1 && c.measureText(s + "…").width > maxWidth) s = s.slice(0, -1);
-    return s + "…";
-  }
 
   /* ------------------------------------------------------------------
      同步：把"当前应该显示哪些泡泡"喂进来
@@ -359,11 +454,25 @@
     });
   }
 
-  // 贴图只依赖这几个"画得出来"的字段
+  // 贴图只依赖这几个"画得出来"的字段。标题不再上贴图，所以不进 key
   function spriteKey(item, instance) {
-    return instance === 0
-      ? `${item.favorite}|${item.title}|${item.duration}`
-      : `${item.favorite}`;
+    return instance === 0 ? `${item.favorite}|${item.mood}` : `${item.favorite}`;
+  }
+
+  /*
+    把同一张脸导成 data URL，给筛选 chips 当图标用。
+    复用 drawDomiFace 而不是另写一套 SVG —— 表情只有一个真相来源，
+    以后改表情不会出现"泡泡上笑着、chip 上闭着眼"这种事。
+  */
+  function faceDataUrl(mood, size) {
+    const px = size || 26;
+    const off = document.createElement("canvas");
+    off.width = Math.round(px * 2);
+    off.height = Math.round(px * 2);
+    const c = off.getContext("2d");
+    c.setTransform(2, 0, 0, 2, 0, 0);
+    drawDomiFace(c, px / 2, px / 2, px * 0.42, mood);
+    return off.toDataURL();
   }
 
   /* ------------------------------------------------------------------
@@ -624,5 +733,5 @@
     return false;
   }
 
-  window.BubbleField = { init, setItems, setRecording, hitTestAt, destroy, TUNING };
+  window.BubbleField = { init, setItems, setRecording, hitTestAt, faceDataUrl, destroy, TUNING };
 })();

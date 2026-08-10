@@ -1,3 +1,28 @@
+/*
+  站酷快乐体（免费商用）。
+  之前用 Comic Sans 只对拉丁字符生效 —— 中文其实 fallback 到了幼圆，
+  手写感在中文部分是完全缺失的，而这个产品几乎全是中文。
+
+  拆两个子集加载：拉丁只有 5KB，中文 709KB。
+  用 unicode-range 让浏览器按字符按需下载，只写标题时不会拖 709KB。
+*/
+@font-face {
+  font-family: "ZCOOL KuaiLe";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/zcool-kuaile-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "ZCOOL KuaiLe";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/zcool-kuaile-chinese-simplified-400-normal.woff2") format("woff2");
+  unicode-range: U+2E80-9FFF, U+3000-303F, U+FF00-FFEF, U+FE30-FE4F;
+}
+
 :root {
   color-scheme: light;
 
@@ -23,8 +48,8 @@
   --stroke-thin: 1.4px;
   --lift: 2px 2px 0 rgba(63, 58, 52, 0.16);
 
-  font-family: "Comic Sans MS", "Chalkboard SE", "YouYuan", "幼圆", "Yuanti SC",
-    "圆体-简", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-family: "ZCOOL KuaiLe", "Comic Sans MS", "Chalkboard SE", "YouYuan",
+    "Yuanti SC", "Microsoft YaHei UI", "PingFang SC", sans-serif;
 }
 
 * {
@@ -335,6 +360,14 @@ textarea:focus,
 button:focus-visible {
   outline: var(--stroke) dashed var(--tomato);
   outline-offset: 3px;
+}
+
+/* chip 上的多米小脸，和泡泡里那张是同一份代码画的 */
+.chip-face {
+  width: 22px;
+  height: 22px;
+  margin-right: 5px;
+  vertical-align: -5px;
 }
 
 .chips {

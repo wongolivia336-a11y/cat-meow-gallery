@@ -709,7 +709,11 @@ function renderFilterState() {
 
 function renderMoodChips() {
   els.moodChips.innerHTML = MOODS.map((mood) => {
-    return `<button class="chip" type="button" data-mood="${mood.id}" aria-pressed="false">${mood.label}</button>`;
+    // "全部"没有对应表情，留空图标位，避免硬凑一个看不懂的图形
+    const face = mood.id === "all"
+      ? ""
+      : `<img class="chip-face" src="${BubbleField.faceDataUrl(mood.id, 26)}" alt="" />`;
+    return `<button class="chip" type="button" data-mood="${mood.id}" aria-pressed="false">${face}${mood.label}</button>`;
   }).join("");
 }
 
