@@ -1,112 +1,193 @@
-# 图片素材交接单 · 稚拙手绘 doodle 风
+# 视觉素材交接单 · meow gallery
 
-给生图 Agent 的需求说明。**先读「分工原则」再看清单**，否则容易画出用不上的东西。
+给生图工具的规格说明。**先读「为什么需要素材」和「必须先做的一件事」，再看清单。**
+
+推荐工具：**Recraft**（能锁风格批量出图，且可导出 SVG，无损缩放）。
+其次是任何支持 image-to-image / 风格参考的工具。
 
 ---
 
-## 分工原则：会变的交给代码，不变的交给图
+## 必须先做的一件事：喂多米的真实照片
 
-这个项目的泡泡尺寸是连续变化的（`app.js` 里 `154px ~ 278px` 之间任意值，由录音时长和响度算出），
-颜色也随情绪旋转色相。**任何需要随数据缩放或变色的东西，都不能用位图**——
-手绘线条一拉伸，笔触粗细就崩了。
+只给文字描述，模型会给你一只**泛型猫**。那就没有"个性"可言了。
 
-所以：
+**找 3-5 张多米的照片**（正脸清晰、光线均匀、背景简单），
+用工具的 image-to-image 或风格参考功能喂进去。
 
-| 交给生图 Agent ✅ | 已由 CSS 生成 ⚙️（不用画） |
+这是"个性"这个词唯一能落地的地方。少了这一步，下面所有规格都只能产出好看但不属于你的东西。
+
+在动手前先把这行填了：
+
+> **多米的外观：**（毛色 / 花纹 / 脸型 / 眼睛颜色 / 有没有标志性特征）
+> `________________________________________________`
+
+---
+
+## 为什么需要素材：代码画不出笔压
+
+现在的猫脸是 canvas 代码画的，问题很具体：
+
+| | 真实手绘 | 代码 |
+|---|---|---|
+| 耳朵 | 不对称、带弧度、一只高一只低 | 完美等腰三角形 |
+| 线条 | 起笔重、收笔轻，有笔压变化 | 全程等宽 |
+| 眼睛 | 两只不一样大、位置微偏 | 数学对称 |
+| 胡须 | 长短不一、角度随意、带弧 | 精确等距直线 |
+
+**「完美的几何」正是稚拙风的反面。** rough.js 能抖动轮廓，但抖不出笔压和起收笔。
+
+---
+
+## 设计原则：可爱只能集中在一个点
+
+「可爱」和「简约/留白」天生打架。解法是：
+
+> 把可爱压缩到**一两个高密度的点**上，其余地方极度克制。
+
+**多米的脸就是那个点。** 它可以画得很详细。
+其余所有元素（泡泡轮廓、按钮、图标）都必须保持极简，不许抢戏。
+
+---
+
+## 交给生图 ✅ / 已由代码生成 ⚙️
+
+| 生图工具做 ✅ | 代码已经在做 ⚙️（别画） |
 |---|---|
-| 猫咪主角（首页 mascot） | 泡泡外框、卡片边、按钮边 |
-| 空状态插画（一颗都没有时） | 所有抖动线条（4 种笔迹随机分配） |
-| 6 个声音类型图标 | 波形条 |
-| 装饰性 doodle 小件 | 纸纹颗粒、手账方格 |
-| 真实纸张扫描纹理（可选） | 硬边偏移投影 |
+| 多米的 6 种表情头像 | 泡泡轮廓（尺寸随录音时长连续变化） |
+| 多米全身像（空状态用） | 泡泡的抖动手绘线 |
+| 纸张纹理（可选） | 破裂动画、碎片 |
+| | 收藏的小星星 |
 
----
-
-## 两个必须提前规避的坑
-
-### 1. 一致性：一次生成，不要分次
-
-6 个图标分 6 次生成，线宽、笔触、饱和度必然对不齐，拼在一起会很脏。
-
-**做法**：让模型在**一张图里**画完整套，再切片。prompt 里明确网格结构：
-
-> a 3x2 grid of six icons on a plain white background, evenly spaced, uniform line weight
-
-单次生成内模型会自发保持风格一致，这是目前最可靠的一致性手段。
-
-### 2. 透明底：模型给不出干净 alpha
-
-要么统一生成在**纯白底**上后期抠图，要么接受"贴纸感"——
-本项目纸底是米黄 `#fbf2e0`，白边贴纸压在米黄纸上，在稚拙风里反而是加分的。
-**建议直接走贴纸路线，省一道工序。**
+泡泡尺寸在 30–94px 半径之间连续变化，**位图跟不上**，所以轮廓必须留给代码。
 
 ---
 
 ## 风格锚点（每个 prompt 都带上）
 
 ```
-naive childlike crayon drawing, wobbly uneven hand-drawn ink outline,
+naive childlike crayon drawing, wobbly uneven hand-drawn ink outline
+with visible pressure variation (thick at stroke start, thin at the flick),
 flat opaque fill with slight off-register color (fill spills past the line),
-warm dark brown ink #463a30 outline, NOT black,
-visible paper grain, no gradients, no gloss, no 3D, no drop shadow,
-picture-book illustration, slightly clumsy proportions
+warm dark brown ink #443e37 outline, NOT black,
+asymmetric and slightly clumsy — one ear higher than the other,
+eyes not exactly the same size, whiskers of uneven length,
+no gradients, no gloss, no 3D, no drop shadow, no digital smoothness,
+picture-book illustration
 ```
 
-**关键几条的理由**：
-- `off-register`（颜色没涂准、溢出线外）——这是稚拙风最有效的单一特征，比线条抖动还管用
-- `brown ink not black`——纯黑会让画面立刻变回矢量卡通
-- `no gradients / no gloss`——渐变是玻璃感的语言，和这一版设计直接冲突
+**几条关键的理由：**
 
-## 配色（务必锁死，让模型只用这几个色）
+- `pressure variation` — 这是代码做不到、而你最需要的东西
+- `off-register`（颜色涂出线外）— 稚拙风最有效的单一特征，比线条抖动还管用
+- `asymmetric` / `one ear higher` — 对称是"代码感"的来源，必须主动破坏
+- `brown ink not black` — 纯黑会让画面立刻变回矢量卡通
+- `no gradients / no gloss` — 渐变是玻璃感的语言，和这版设计直接冲突
+
+## 配色（锁死，只用这些）
 
 ```
-纸底 #fbf2e0   墨线 #463a30
-粉 #f58ba8   黄 #f6c445   薄荷 #74c4a8
-天蓝 #7fb2e5   紫 #b096dd   橘红 #ee7b58
+纸底 #fdfcf9   墨线 #443e37
+粉 #f77ea2   黄 #f9c22e   薄荷 #5cc9a7
+天蓝 #6aaeee   紫 #a98ce4   橘红 #f4744d
 ```
 
 ---
 
-## 素材清单
+## 素材 A：多米的 6 种表情（最高优先级）
 
-### A. 猫咪主角 — `assets/cat-mascot.png`（替换现有）
-坐着的猫，旁边飘着几颗泡泡。尺寸约 900×900，透明底或白底。
-> a naive childlike crayon drawing of a chubby cat sitting beside floating soap bubbles, [风格锚点]
+### 输出规格
 
-### B. 空状态插画 — `assets/empty-state.png`
-猫对着空罐子/没吹起来的泡泡棒发呆。约 700×700。
-> a naive childlike crayon drawing of a cat looking at an empty bubble wand, slightly disappointed, [风格锚点]
+- **一张 sprite sheet，3 列 × 2 行**
+- 每格 **512 × 512**，整图 **1536 × 1024**
+- **纯白背景**（模型给不出干净 alpha，白底我来抠；别用透明底或彩色底）
+- 每格里是**一个完整的多米头像**（含头部轮廓、耳朵、五官），居中，四周留 12% 空白
+- 6 格线宽必须一致
 
-### C. 声音类型图标 ×6 — `assets/moods.png`（一张 sprite sheet，3×2）
-六格内容（顺序固定，代码按索引切）：
-1. 撒娇喵 — 张嘴的猫头，几条短弧线代表声音
-2. 呼噜 — 闭眼的猫头，三条波浪线
-3. 饭盆通知 — 猫爪拍碗
-4. 半夜叫 — 月亮 + 猫剪影
-5. 啾啾 — 猫抬头看鸟，小鸟一只
-6. 抗议 — 炸毛猫，头顶闪电
+### 为什么必须一次出一张图
 
-> a 3x2 grid of six simple icons on a plain white background, evenly spaced, uniform line weight: [六格内容], [风格锚点]
+6 个表情分 6 次生成，线宽、笔触、毛色、脸型必然对不齐，拼在一起会很脏。
+**单次生成内模型会自发保持一致**，这是目前最可靠的一致性手段。
 
-### D. 装饰小件 — `assets/doodles.png`（一张 4×2 sprite sheet）
-爪印 / 小鱼骨 / 毛线球 / 五角星 / 小心心 / 短波浪线 / 小音符 / 泡泡串。
-每个都要极简，2~5 笔画完。
-> a 4x2 grid of tiny minimal doodle stickers on a plain white background: [内容], each drawn in 2-5 strokes, [风格锚点]
+### 六格内容（顺序固定，代码按索引切）
 
-### E. 纸张纹理（可选）— `assets/paper.jpg`
-水彩纸/牛皮纸扫描质感，无内容，可平铺。约 1200×1200。
-拿到后在 `styles.css` 的 `body::before` 里把那行 `url("data:image/svg+xml,...")`
-换成 `url("assets/paper.jpg")` 即可，**其余代码一行都不用动**——那个位置我留了插槽和注释。
+| 序号 | 位置 | mood id | 表情 |
+|---|---|---|---|
+| 1 | 左上 | `sweet` | 撒娇：眯眯笑眼，小嘴微张，头微微歪 |
+| 2 | 中上 | `food` | 饭盆：眼睛瞪圆发亮，嘴张开，一副"快开饭"的急切 |
+| 3 | 右上 | `sleepy` | 困困：闭眼，嘴小小一条，整体往下塌 |
+| 4 | 左下 | `purr` | 呼噜：闭眼满足，ω 形嘴，脸颊鼓一点 |
+| 5 | 中下 | `mystery` | 疑惑：一只眼睁一只眼眯，头歪，嘴歪 |
+| 6 | 右下 | `protest` | 抗议：眉毛下压，嘴张开在叫，耳朵微微后折 |
+
+### prompt 模板
+
+```
+A 3x2 grid of six cat head illustrations on a plain pure white background,
+evenly spaced, uniform line weight, the SAME cat in all six cells.
+The cat: 【多米的外观】
+Six expressions, left to right, top to bottom:
+1) sweet squinting happy eyes with small open mouth, head slightly tilted
+2) wide excited round eyes, mouth open, eager
+3) eyes closed, tiny line mouth, sleepy and drooping
+4) eyes closed contentedly, omega-shaped mouth, cheeks puffed
+5) one eye open one squinted, head tilted, crooked mouth, puzzled
+6) brows lowered, mouth open mid-yowl, ears folded back, protesting
+[风格锚点]
+```
 
 ---
 
-## 验收标准
+## 素材 B：多米全身像（空状态用）
+
+一只都还没录的时候显示。多米对着一根没吹起来的泡泡棒发呆。
+
+- 700 × 700，纯白背景
+
+```
+a naive childlike crayon drawing of 【多米的外观】 sitting beside
+an empty bubble wand, looking slightly disappointed, [风格锚点]
+```
+
+---
+
+## 素材 C：纸张纹理（可选）
+
+水彩纸 / 牛皮纸扫描质感，无内容，可平铺，约 1200 × 1200。
+
+拿到后在 `styles.css` 的 `body::before` 里把那行
+`url("data:image/svg+xml,...")` 换成 `url("assets/paper.jpg")` 即可，
+**其余代码一行都不用动** —— 那个位置留了插槽和注释。
+
+---
+
+## 交付方式
+
+放到 `assets/` 目录，文件名固定（代码按这个名字找）：
+
+```
+assets/domi-faces.png     ← 素材 A，1536×1024 的 3×2 sprite sheet
+assets/domi-full.png      ← 素材 B
+assets/paper.jpg          ← 素材 C（可选）
+```
+
+如果 Recraft 能导出 SVG，**优先给 SVG**（`domi-faces.svg`），无损缩放更好。
+
+---
+
+## 验收清单
 
 拿到素材后逐条对：
 
-- [ ] 线条颜色是暖褐 `#463a30` 一类，不是纯黑
+- [ ] 六格里是**同一只猫**，毛色花纹一致
+- [ ] 看得出是多米，不是一只泛型猫
+- [ ] 线条颜色是暖褐 `#443e37` 一类，不是纯黑
+- [ ] 有笔压变化（线条粗细不均）
 - [ ] 有 off-register（填色溢出轮廓）
+- [ ] 有不对称（耳朵、眼睛不完全对称）
 - [ ] 没有渐变、高光、投影、3D
-- [ ] sprite sheet 内部线宽一致
-- [ ] 放到米黄纸底 `#fbf2e0` 上不脏、不跳
-- [ ] 缩到 32px（图标）仍能认出是什么
+- [ ] 六格线宽一致
+- [ ] 缩到 60px 仍能分辨是哪种表情 ← **最容易翻车的一条**
+- [ ] 放到米白底 `#fdfcf9` 上不脏、不跳
+
+最后一条特别重要：泡泡最小的时候脸只有 60px 左右。
+细节画太多，缩小后会糊成一团。**宁可简单，不可繁复。**
