@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#fdfcf9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>meow gallery</title>
-    <link rel="stylesheet" href="styles.css?v=16" />
+    <link rel="stylesheet" href="styles.css?v=20" />
   </head>
   <body>
     <!--
@@ -51,7 +51,7 @@
       <header class="app-bar">
         <div class="app-bar-title">
           <h1>meow gallery</h1>
-          <p id="collectionCount">已吹出 0 颗声音泡泡</p>
+          <p id="collectionCount">还没有声音</p>
         </div>
         <!--
           手绘放大镜。刻意不用几何完美的圆 ——
@@ -73,19 +73,36 @@
         </div>
         <div class="search-wrap">
           <label for="searchInput">搜泡泡</label>
-          <input id="searchInput" type="search" placeholder="标签、半夜叫、罐头" />
+          <input id="searchInput" type="search" placeholder="半夜叫、罐头、呼噜" />
         </div>
         <div class="chips" id="moodChips" role="list" aria-label="声音类型"></div>
         <div class="filter-row">
-          <button class="small-toggle" id="favoriteOnly" type="button" aria-pressed="false">只看星星泡泡</button>
-          <select id="sortSelect" aria-label="排序方式">
-            <option value="newest">最新吹出</option>
-            <option value="popular">反复戳过</option>
-          </select>
+          <button class="small-toggle" id="favoriteOnly" type="button" aria-pressed="false">只看圈起来的</button>
+
+          <!-- 和声音类型用的是同一个下拉组件，只是不让输入 -->
+          <div class="combo combo-compact" id="sortCombo">
+            <input
+              id="sortInput"
+              type="text"
+              role="combobox"
+              readonly
+              aria-expanded="false"
+              aria-controls="sortListbox"
+              aria-haspopup="listbox"
+              aria-label="排序方式"
+            />
+            <button class="combo-caret" id="sortCaret" type="button" tabindex="-1" aria-label="展开排序方式">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5.6 9.1c2.2 2.5 4.3 4.7 6.5 6.5c2.2 -1.9 4.3 -4.2 6.3 -6.7" />
+              </svg>
+            </button>
+            <ul class="combo-list" id="sortListbox" role="listbox" aria-label="排序方式" hidden></ul>
+          </div>
+          <input type="hidden" id="sortValue" />
         </div>
       </section>
 
-      <div class="hint" id="fieldHint">点一颗泡泡，让它破掉发出声音</div>
+      <div class="hint" id="fieldHint">戳一颗，听听多米</div>
 
       <!-- 录音区固定在底部拇指可达范围 -->
       <div class="record-bar">
@@ -160,7 +177,7 @@
 
     <script src="vendor/matter.min.js"></script>
     <script src="vendor/rough.js"></script>
-    <script src="bubbles.js?v=16"></script>
-    <script src="app.js?v=16"></script>
+    <script src="bubbles.js?v=20"></script>
+    <script src="app.js?v=20"></script>
   </body>
 </html>

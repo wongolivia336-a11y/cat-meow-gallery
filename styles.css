@@ -448,6 +448,18 @@ button:focus-visible {
   position: relative;
 }
 
+/* 排序那种"只选不填"的窄下拉 */
+.combo-compact {
+  width: clamp(140px, 42vw, 176px);
+  flex: 0 0 auto;
+}
+
+/* 只读的下拉不该显示文本光标 —— 它的行为是"选"，不是"写" */
+.combo input[readonly] {
+  cursor: pointer;
+  user-select: none;
+}
+
 .combo input {
   padding-right: 40px; /* 给右侧箭头让位 */
 }
