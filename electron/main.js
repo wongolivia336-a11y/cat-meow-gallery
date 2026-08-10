@@ -12,7 +12,7 @@
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const {
-  app, BrowserWindow, Tray, Menu, ipcMain, screen, session, protocol, net, nativeImage
+  app, BrowserWindow, Tray, Menu, ipcMain, screen, session, protocol, net, nativeImage, powerMonitor
 } = require("electron");
 
 const ROOT = path.join(__dirname, "..");
@@ -32,6 +32,45 @@ protocol.registerSchemesAsPrivileged([
 let win = null;
 let tray = null;
 let controlMode = false; // true = 控制界面模式，整窗可交互
+const WORK_MINUTES = [25, 50, 90];
+let workMinutes = 50;
+let remainingMs = workMinutes * 60 * 1000;
+let timerTickAt = Date.now();
+let timerPaused = false;
+let showtimeActive = false;
+let timerId = null;
+
+function resetRestTimer(minutes = workMinutes) {
+  remainingMs = minutes * 60 * 1000;
+  timerTickAt = Date.now();
+  showtimeActive = false;
+  buildTray();
+}
+
+function triggerShowtime() {
+  if (!win || showtimeActive || timerPaused) return;
+  showtimeActive = true;
+  remainingMs = 0;
+  win.webContents.send("pet:showtime");
+  buildTray();
+}
+
+function tickRestTimer() {
+  const now = Date.now();
+  const elapsed = Math.max(0, now - timerTickAt);
+  timerTickAt = now;
+  if (!timerPaused && !showtimeActive) {
+    remainingMs = Math.max(0, remainingMs - elapsed);
+    if (remainingMs === 0) triggerShowtime();
+  }
+}
+
+function remainingLabel() {
+  if (showtimeActive) return "休息仪式进行中";
+  if (timerPaused) return "提醒已暂停";
+  const minutes = Math.max(1, Math.ceil(remainingMs / 60000));
+  return `下次休息：${minutes} 分钟后`;
+}
 
 function serveAppProtocol() {
   protocol.handle("meow", (request) => {
@@ -123,6 +162,31 @@ function loadTrayIcon() {
 
 function buildTray() {
   const menu = Menu.buildFromTemplate([
+    { label: remainingLabel(), enabled: false },
+    { type: "separator" },
+    { label: "现在休息", enabled: !showtimeActive, click: triggerShowtime },
+    {
+      label: "推迟 5 分钟",
+      click: () => {
+        remainingMs = Math.max(remainingMs, 0) + 5 * 60 * 1000;
+        showtimeActive = false;
+        timerTickAt = Date.now();
+        buildTray();
+      }
+    },
+    { label: "跳过这次", click: () => resetRestTimer() },
+    {
+      label: "工作时长",
+      submenu: WORK_MINUTES.map((minutes) => ({
+        label: `${minutes} 分钟`, type: "radio", checked: workMinutes === minutes,
+        click: () => { workMinutes = minutes; resetRestTimer(minutes); }
+      }))
+    },
+    {
+      label: timerPaused ? "恢复提醒" : "暂停提醒",
+      click: () => { timerPaused = !timerPaused; timerTickAt = Date.now(); buildTray(); }
+    },
+    { type: "separator" },
     {
       label: controlMode ? "✓ 控制界面" : "打开控制界面",
       click: () => setControlMode(!controlMode)
@@ -149,6 +213,12 @@ app.whenReady().then(() => {
 
   createWindow();
   buildTray();
+  timerId = setInterval(tickRestTimer, 1000);
+
+  powerMonitor.on("lock-screen", () => { timerPaused = true; timerTickAt = Date.now(); buildTray(); });
+  powerMonitor.on("unlock-screen", () => { timerPaused = false; timerTickAt = Date.now(); buildTray(); });
+  powerMonitor.on("suspend", () => { timerPaused = true; timerTickAt = Date.now(); });
+  powerMonitor.on("resume", () => { timerPaused = false; timerTickAt = Date.now(); buildTray(); });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -165,6 +235,7 @@ ipcMain.on("pet:interactive", (event, on) => {
 });
 
 ipcMain.on("pet:exit-control", () => setControlMode(false));
+ipcMain.on("pet:showtime-done", () => resetRestTimer());
 
 // 桌宠没有任务栏图标，关掉最后一个窗口不等于退出 —— 退出走托盘菜单
 app.on("window-all-closed", () => {

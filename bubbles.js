@@ -37,6 +37,7 @@
   let pops = [];               // 正在播放的破裂特效
   let moods = [];
   let handlers = {};
+  let overlayDraw = null;       // 桌宠等前景角色，始终画在泡泡之上
   let recording = null;        // { duration, level, pitch } 或 null
   /*
     录音时整个泡泡场的透明度。
@@ -546,12 +547,12 @@
     }
   }
 
-  function spawn(item, instance, atEdge) {
+  function spawn(item, instance, atEdge, placement) {
     const t = traitsOf(item, instance);
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
-    const x = atEdge ? (Math.random() < 0.5 ? t.radius + 4 : w - t.radius - 4) : rand(t.radius, w - t.radius);
-    const y = atEdge ? rand(t.radius, h - t.radius) : rand(t.radius, h - t.radius);
+    const x = placement?.x ?? (atEdge ? (Math.random() < 0.5 ? t.radius + 4 : w - t.radius - 4) : rand(t.radius, w - t.radius));
+    const y = placement?.y ?? (atEdge ? rand(t.radius, h - t.radius) : rand(t.radius, h - t.radius));
 
     const body = Bodies.circle(x, y, t.radius, {
       restitution: TUNING.restitution,
@@ -559,7 +560,7 @@
       friction: 0,
       density: 0.0009
     });
-    Body.setVelocity(body, { x: rand(-1.4, 1.4), y: rand(-1.4, 1.4) });
+    Body.setVelocity(body, placement?.velocity || { x: rand(-1.4, 1.4), y: rand(-1.4, 1.4) });
     Composite.add(engine.world, body);
 
     bubbles.push({
@@ -583,6 +584,18 @@
       popAt: 0,
       respawnAt: 0
     });
+  }
+
+  /* 多米吹泡泡时从嘴边定点生成。instance 使用独立序号，避免覆盖密度泡泡。 */
+  function spawnAt(item, x, y, velocity) {
+    if (!item || !engine) return null;
+    const instance = 10000 + Math.floor(performance.now());
+    spawn(item, instance, false, {
+      x: clamp(x, 24, canvas.clientWidth - 24),
+      y: clamp(y, 24, canvas.clientHeight - 24),
+      velocity: velocity || { x: 1.4, y: -1.2 }
+    });
+    return bubbles[bubbles.length - 1] || null;
   }
 
   // 贴图只依赖这几个"画得出来"的字段。标题不再上贴图，所以不进 key
@@ -825,6 +838,7 @@
     }
 
     if (recording) drawRecordBubble(now);
+    if (overlayDraw) overlayDraw(ctx, now, w, h);
 
     rafId = requestAnimationFrame(draw);
   }
@@ -899,8 +913,12 @@
     moods = next || [];
   }
 
+  function setOverlayDraw(fn) {
+    overlayDraw = typeof fn === "function" ? fn : null;
+  }
+
   window.BubbleField = {
-    init, setItems, setRecording, setMode, setMoods,
+    init, setItems, setRecording, setMode, setMoods, spawnAt, setOverlayDraw,
     hitTestAt, faceDataUrl, destroy, TUNING
   };
 })();

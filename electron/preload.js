@@ -21,6 +21,14 @@ contextBridge.exposeInMainWorld("meowPet", {
     ipcRenderer.on("pet:control-mode", (_event, on) => handler(Boolean(on)));
   },
 
+  onShowtime(handler) {
+    ipcRenderer.on("pet:showtime", () => handler());
+  },
+
+  showtimeDone() {
+    ipcRenderer.send("pet:showtime-done");
+  },
+
   exitControlMode() {
     ipcRenderer.send("pet:exit-control");
   }

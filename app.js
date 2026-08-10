@@ -105,6 +105,8 @@ function init() {
     onLongPress: (item) => toggleFavorite(item)
   });
 
+  window.DomiPet?.init({ getItems: () => state.meows });
+
   setupDesktopPet();
   applyMode();
   window.addEventListener("resize", applyMode);
@@ -255,6 +257,10 @@ function setupDesktopPet() {
       interactive = false;
       scheduleRest();
     }
+  });
+
+  window.meowPet.onShowtime(() => {
+    window.DomiPet?.startShowtime(() => window.meowPet.showtimeDone());
   });
 
   // 控制界面里按 Esc 退回穿透状态，不用每次都去点托盘
