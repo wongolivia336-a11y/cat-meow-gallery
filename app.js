@@ -82,6 +82,7 @@ const state = {
   controlMode: false,
   mode: null // "capture"（手机，工具）或 "ambient"（电脑，屏保）
 };
+let deferredInstallPrompt = null;
 
 const els = {};
 
@@ -123,6 +124,10 @@ function cacheElements() {
   els.recordTimer = document.querySelector("#recordTimer");
   els.recordState = document.querySelector("#recordState");
   els.searchToggle = document.querySelector("#searchToggle");
+  els.aboutButton = document.querySelector("#aboutButton");
+  els.aboutDialog = document.querySelector("#aboutDialog");
+  els.aboutClose = document.querySelector("#aboutClose");
+  els.installPwaButton = document.querySelector("#installPwaButton");
   els.filterPanel = document.querySelector("#filterPanel");
   els.fieldHint = document.querySelector("#fieldHint");
   els.searchInput = document.querySelector("#searchInput");
@@ -146,6 +151,22 @@ function cacheElements() {
 }
 
 function bindEvents() {
+  els.aboutButton?.addEventListener("click", () => els.aboutDialog?.showModal());
+  els.aboutClose?.addEventListener("click", () => els.aboutDialog?.close());
+  els.installPwaButton?.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    els.installPwaButton.hidden = true;
+  });
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    if (els.installPwaButton) els.installPwaButton.hidden = false;
+  });
+
   els.recordButton.addEventListener("click", () => {
     if (state.isRecording) {
       stopRecording();
@@ -1603,4 +1624,8 @@ function showToast(message) {
   showToast.timeout = window.setTimeout(() => {
     els.toast.classList.remove("is-visible");
   }, 2200);
+}
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 }

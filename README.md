@@ -1,9 +1,17 @@
 # meow gallery
 
-把猫叫存成会飘在桌面上的泡泡，工作累了戳破一颗，听见它。
+> 手机捉住猫叫，电脑把它吹回来。
 
-灵感来自小时候电脑上那个泡泡屏保。多米的 meow、purr、半夜叫不再是一列音频文件，
-而是一屏自由漂浮、互相碰撞、戳一下就"啪"地破掉发出声音的泡泡。
+meow gallery 是一只装着真实猫声的桌面宠物。多米平时在屏幕角落睡觉、舔爪、观察鼠标；
+工作到点后，它拿出泡泡水，把你录下的 meow、purr 和半夜叫吹成一屏可以戳的声音泡泡。
+
+它不是音频管理器，也不是催你打卡的番茄钟，而是一个可以被忽略、也值得偶尔停下来的休息仪式。
+
+[打开网页版](https://bioaz-agent-workbench.vercel.app/) ·
+[下载桌面版](https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest) ·
+[查看 Releases](https://github.com/wongolivia336-a11y/cat-meow-gallery/releases)
+
+![多米角色设定](assets/domi-character-sheet.png)
 
 ---
 
@@ -26,15 +34,49 @@
 
 ---
 
-## 跑起来
+## 三种使用形态
 
-### 网页版
+| 形态 | 现在能做什么 | 安装方式 |
+|---|---|---|
+| 手机网页 / PWA | 录音、标记、保存声音泡泡 | 浏览器打开网页，选择“添加到主屏幕” |
+| Windows / macOS 桌宠 | 常驻角落、定时出场、托盘控制、戳泡泡听声音 | 从 GitHub Releases 下载安装包 |
+| 普通电脑网页 | 体验完整泡泡场和录音控制界面 | 直接打开网页，无需安装 |
+
+手机与电脑的账号登录、邮箱验证码和云同步是下一阶段能力；当前录音仍保存在本机浏览器或桌宠数据中。
+
+## 下载与安装
+
+### 桌面版
+
+前往 [GitHub Releases](https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest) 下载：
+
+- Windows：`meow-gallery-*-windows-x64.exe`
+- macOS：`meow-gallery-*-mac-*.dmg`
+
+安装包由 `.github/workflows/desktop-release.yml` 构建：推送 `v*` 标签会自动生成 Windows 和 macOS 安装包并附加到 Release。
+
+当前测试版尚未购买 Windows/macOS 代码签名证书，系统可能显示“未知发布者”或 Gatekeeper 提示；
+正式公开分发前需要补齐签名和 notarization。
+
+### 手机版
+
+网页已经包含 Web App Manifest 和 Service Worker：
+
+- Android Chrome：打开“关于 · 下载”，点击“安装到手机”；
+- iPhone Safari：点击分享按钮，再选择“添加到主屏幕”；
+- 安装后以独立窗口运行，核心界面可离线打开。
+
+麦克风录音仍需要 HTTPS 和用户授权。
+
+## 本地运行
+
+### 网页
 
 ```bash
 python devserver.py 8765
 ```
 
-### 桌宠版（Electron）
+### 桌宠（Electron）
 
 泡泡飘在你真实的桌面上，平时整窗**点击穿透**，只有鼠标悬在泡泡上时才接管点击。
 
@@ -112,6 +154,9 @@ CSS 的 `filter` 会把整个子树先合成成位图再扭曲，子元素写 `f
 **泡泡本身就是多米的脸**
 不做 6 个不同图标，做同一张脸的 6 种表情。耳朵从泡泡内侧顶出来。
 不增加任何元素，却同时拿到可爱 / 个性 / 简约。
+
+六种表情的视觉基准见 `assets/domi-face-doodle-reference.png`。运行时没有直接缩放这张大图，
+而是按同一套特征在 Canvas 上预渲染，以适配 30–94px 连续变化的泡泡并保持性能。
 
 **主动把线条画歪**
 「完美的几何」正是稚拙风的反面。所以代码里有专门的 `jitterLine` / `inkStroke`，

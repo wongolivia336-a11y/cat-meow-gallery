@@ -367,8 +367,8 @@
     const rng = makeRng(hash(String(mood)) + (o.seed || 0) * 7919);
 
     // 抖动幅度和线宽都跟半径走，缩放到任何尺寸手感一致
-    const amp = r * (bold ? 0.035 : 0.03);
-    const w = bold ? Math.max(1.6, r * 0.09) : Math.max(1.5, r * 0.045);
+    const amp = r * (bold ? 0.026 : 0.022);
+    const w = bold ? Math.max(1.6, r * 0.082) : Math.max(1.35, r * 0.04);
 
     c.save();
     c.translate(cx, cy);
@@ -394,14 +394,26 @@
 
       inkStroke(c, jitterLine(ex - halfW, ey + r * 0.14, tipX, tipY, rng, amp, 4), rng, w);
       inkStroke(c, jitterLine(tipX, tipY, ex + halfW, ey + r * 0.12, rng, amp, 4), rng, w);
+
+      // 折耳内侧的一小笔，比尖三角更像真实多米向外微折的耳朵。
+      c.globalAlpha = 0.45;
+      inkStroke(c, jitterLine(tipX, tipY + r * 0.045, ex + side * halfW * 0.25, ey + r * 0.11, rng, amp * 0.6, 3), rng, w * 0.52);
+      c.globalAlpha = 1;
     }
+
+    // 额头三笔银渐层纹：少而明确，缩到 60px 仍认得出多米。
+    c.globalAlpha = 0.3;
+    for (const dx of [-0.105, 0, 0.105]) {
+      inkStroke(c, jitterLine(dx * r, -r * 0.5, dx * r * 0.72, -r * 0.31, rng, amp * 0.45, 3), rng, w * 0.5);
+    }
+    c.globalAlpha = 1;
 
     // 眼睛：左右大小、高低都略微不同
     const eyeY = -r * 0.04;
     for (const side of [-1, 1]) {
       const x = side * r * (0.24 + rng() * 0.05);
       const y = eyeY + (rng() - 0.5) * r * 0.05;
-      const er = r * (0.085 + rng() * 0.03);
+      const er = r * (0.11 + rng() * 0.022);
 
       if (f.eye === "closed" || (f.eye === "wonk" && side < 0)) {
         inkStroke(c, jitterLine(x - er, y, x + er, y + (rng() - 0.5) * r * 0.02, rng, amp, 3), rng, w);
@@ -410,23 +422,40 @@
       } else if (f.eye === "cross") {
         inkStroke(c, jitterLine(x - er, y - er * 0.7, x + er, y + er * 0.3, rng, amp, 3), rng, w);
       } else {
-        /*
-          睁开的眼睛用"绕一圈的短线"堆出来，而不是 fill 一个正圆。
-          正圆一眼就是电脑画的；绕圈填的黑点边缘毛毛的，像笔尖戳出来的。
-        */
-        const dotR = er * (f.eye === "wide" ? 0.95 : 0.8);
-        c.lineWidth = Math.max(1, dotR * 0.85);
-        for (let k = 0; k < 3; k += 1) {
-          const pts = jitterArc(x, y, dotR * (0.3 + k * 0.22), 0, Math.PI * 2, rng, dotR * 0.12, 9);
-          c.beginPath();
-          pts.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
-          c.stroke();
-        }
+        // 多米最强的辨识点：浅绿大眼 + 深色眼线。轮廓故意不完全圆。
+        const eyeRx = er * (f.eye === "wide" ? 1.12 : 0.96);
+        const eyeRy = er * (f.eye === "wide" ? 1.2 : 1.06);
+        const outline = jitterArc(x, y, 1, 0, Math.PI * 2, rng, amp * 0.5, 14)
+          .map((p) => ({ x: x + (p.x - x) * eyeRx, y: y + (p.y - y) * eyeRy }));
+        c.save();
+        c.fillStyle = bold ? "rgba(170, 202, 143, 0.92)" : "rgba(170, 202, 143, 0.72)";
+        c.beginPath();
+        outline.forEach((p, i) => (i ? c.lineTo(p.x, p.y) : c.moveTo(p.x, p.y)));
+        c.closePath(); c.fill();
+        inkStroke(c, outline.concat(outline[0]), rng, w * 0.72);
+        c.fillStyle = ink;
+        c.beginPath(); c.ellipse(x + side * er * 0.05, y + er * 0.06, er * 0.43, er * 0.62, side * 0.08, 0, Math.PI * 2); c.fill();
+        c.fillStyle = "rgba(253,252,249,0.9)";
+        c.beginPath(); c.arc(x - er * 0.18, y - er * 0.22, Math.max(1, er * 0.13), 0, Math.PI * 2); c.fill();
+        c.restore();
       }
     }
 
+    // 粉鼻和鼻侧一撮黑色，是这只多米而不是泛型猫的身份钉子。
+    const noseY = r * 0.13;
+    c.save();
+    c.fillStyle = bold ? "rgba(239,154,159,0.95)" : "rgba(239,154,159,0.76)";
+    c.beginPath();
+    c.moveTo(-r * 0.052, noseY - r * 0.018);
+    c.quadraticCurveTo(0, noseY - r * 0.052, r * 0.052, noseY - r * 0.012);
+    c.quadraticCurveTo(r * 0.015, noseY + r * 0.055, -r * 0.052, noseY - r * 0.018);
+    c.fill();
+    c.fillStyle = ink;
+    c.beginPath(); c.ellipse(r * 0.073, noseY - r * 0.03, r * 0.016, r * 0.026, -0.45, 0, Math.PI * 2); c.fill();
+    c.restore();
+
     // 嘴
-    const my = r * (0.24 + rng() * 0.04);
+    const my = r * (0.27 + rng() * 0.025);
     if (f.mouth === "open") {
       const rx = r * (0.075 + rng() * 0.035);
       const ry = rx * (1.05 + rng() * 0.35);

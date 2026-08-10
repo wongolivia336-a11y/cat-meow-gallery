@@ -1,0 +1,15 @@
+{
+  "name": "meow gallery",
+  "short_name": "meow gallery",
+  "description": "把猫叫吹成会飘在桌面上的声音泡泡。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fdfcf9",
+  "theme_color": "#fdfcf9",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/assets/domi-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/domi-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

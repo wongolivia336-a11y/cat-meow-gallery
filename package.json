@@ -6,12 +6,51 @@
   "main": "electron/main.js",
   "scripts": {
     "pet": "electron .",
-    "web": "python devserver.py 8765"
+    "web": "python devserver.py 8765",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg"
   },
   "devDependencies": {
-    "electron": "^43.3.0"
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "@fontsource/zcool-kuaile": "^5.3.0"
+  },
+  "build": {
+    "appId": "gallery.meow.desktop",
+    "productName": "meow gallery",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "bubbles.js",
+      "domi.js",
+      "electron/**/*",
+      "assets/**/*",
+      "vendor/**/*",
+      "node_modules/@fontsource/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/domi-icon-512.png",
+      "artifactName": "meow-gallery-${version}-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "meow gallery"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/domi-icon-512.png",
+      "category": "public.app-category.lifestyle",
+      "artifactName": "meow-gallery-${version}-mac-${arch}.${ext}"
+    }
   }
 }

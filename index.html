@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#fdfcf9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="description" content="把猫叫吹成会飘在桌面上的声音泡泡。手机录下它，电脑在工作间隙陪你听见它。" />
     <title>meow gallery</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/domi-icon-192.png" />
+    <link rel="apple-touch-icon" href="assets/domi-icon-192.png" />
     <link rel="stylesheet" href="styles.css?v=21" />
   </head>
   <body>
@@ -51,6 +55,7 @@
       <header class="app-bar">
         <div class="app-bar-title">
           <h1>meow gallery</h1>
+          <span class="app-tagline">把猫叫吹成桌面上的声音泡泡</span>
           <p id="collectionCount">还没有声音</p>
         </div>
         <!--
@@ -58,12 +63,15 @@
           用两段 path 拼出略歪的镜圈，和整套手绘语言对齐。
           aria-label 保留文字语义，图标本身对读屏器隐藏。
         -->
-        <button class="icon-button" id="searchToggle" type="button" aria-expanded="false" aria-controls="filterPanel" aria-label="搜索和筛选">
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M10.6 3.4c4 -0.3 7.2 3.1 6.9 6.9c-0.3 3.6 -3.2 6.2 -6.8 6.1c-3.8 -0.1 -6.6 -3.1 -6.5 -6.7c0.1 -3.4 2.7 -6.1 6.4 -6.3z" />
-            <path d="M15.4 15.1c1.9 1.7 3.7 3.4 5.4 5.2" />
-          </svg>
-        </button>
+        <div class="app-bar-actions">
+          <button class="text-button" id="aboutButton" type="button">关于 · 下载</button>
+          <button class="icon-button" id="searchToggle" type="button" aria-expanded="false" aria-controls="filterPanel" aria-label="搜索和筛选">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M10.6 3.4c4 -0.3 7.2 3.1 6.9 6.9c-0.3 3.6 -3.2 6.2 -6.8 6.1c-3.8 -0.1 -6.6 -3.1 -6.5 -6.7c0.1 -3.4 2.7 -6.1 6.4 -6.3z" />
+              <path d="M15.4 15.1c1.9 1.7 3.7 3.4 5.4 5.2" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <section class="filter-panel" id="filterPanel" hidden>
@@ -171,6 +179,24 @@
           <button class="primary-button" value="default" type="submit">封口并飘走</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog class="about-dialog" id="aboutDialog">
+      <button class="dialog-close" id="aboutClose" type="button" aria-label="关闭介绍">×</button>
+      <img src="assets/domi-tray.png" alt="多米闭眼吹出一颗粉色泡泡" />
+      <p class="eyebrow">A tiny rest ritual</p>
+      <h2>手机捉住猫叫，电脑把它吹回来</h2>
+      <p>多米平时在桌面角落睡觉。工作到点，它拿出泡泡水，把你录下的真实猫声吹成一屏可以戳的泡泡。</p>
+      <div class="about-steps" aria-label="使用步骤">
+        <span><b>1</b> 手机录下猫叫</span>
+        <span><b>2</b> 同步到电脑</span>
+        <span><b>3</b> 到点戳泡泡休息</span>
+      </div>
+      <div class="about-actions">
+        <a class="primary-button download-link" href="https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest" target="_blank" rel="noreferrer">下载 Windows 桌宠</a>
+        <button class="ghost-button" id="installPwaButton" type="button" hidden>安装到手机</button>
+      </div>
+      <small>桌面安装包由 GitHub Releases 提供；手机版可直接安装当前网页。</small>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
