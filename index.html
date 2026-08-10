@@ -7,6 +7,34 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!--
+      手绘线条工厂。
+      feTurbulence 生成一张噪声图，feDisplacementMap 拿噪声的 R/G 通道
+      去推动原图每个像素的 x/y —— 直线就被推成了抖动的手绘线。
+      四个不同 seed = 四种笔迹，元素随机抽一种，避免"复制粘贴感"。
+      注意：只给"只画边框"的伪元素用，别套在有文字的元素上（文字会糊）。
+    -->
+    <svg class="doodle-defs" aria-hidden="true" focusable="false">
+      <defs>
+        <filter id="doodle-1" x="-12%" y="-12%" width="124%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="3" seed="7" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="4.5" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="doodle-2" x="-12%" y="-12%" width="124%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.021" numOctaves="3" seed="23" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="5.6" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="doodle-3" x="-12%" y="-12%" width="124%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="41" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="3.6" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        <filter id="doodle-4" x="-12%" y="-12%" width="124%" height="124%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.017" numOctaves="3" seed="88" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="6.4" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+    </svg>
+
     <div class="screen-glow" aria-hidden="true"></div>
 
     <div class="app-shell">
