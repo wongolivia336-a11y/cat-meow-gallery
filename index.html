@@ -2,99 +2,90 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#fdfcf9" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>猫猫声音泡泡馆</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=3" />
   </head>
   <body>
     <!--
       手绘线条工厂。
-      feTurbulence 生成一张噪声图，feDisplacementMap 拿噪声的 R/G 通道
-      去推动原图每个像素的 x/y —— 直线就被推成了抖动的手绘线。
-      四个不同 seed = 四种笔迹，元素随机抽一种，避免"复制粘贴感"。
-      注意：只给"只画边框"的伪元素用，别套在有文字的元素上（文字会糊）。
+      feTurbulence 生成噪声，feDisplacementMap 用噪声的 R/G 通道推动每个像素，
+      直线就被推成了抖动的手绘线。四个 seed = 四种笔迹。
+      只给"只画边框"的伪元素用 —— 套在有文字的元素上文字会糊。
     -->
-    <svg class="doodle-defs" aria-hidden="true" focusable="false">
+    <svg class="doodle-defs" aria-hidden="true" focusable="false"
+         style="position:absolute;width:0;height:0;overflow:hidden">
       <defs>
         <filter id="doodle-1" x="-12%" y="-12%" width="124%" height="124%">
           <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="3" seed="7" result="n" />
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="4.5" xChannelSelector="R" yChannelSelector="G" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="3.6" xChannelSelector="R" yChannelSelector="G" />
         </filter>
         <filter id="doodle-2" x="-12%" y="-12%" width="124%" height="124%">
           <feTurbulence type="fractalNoise" baseFrequency="0.021" numOctaves="3" seed="23" result="n" />
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="5.6" xChannelSelector="R" yChannelSelector="G" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="4.6" xChannelSelector="R" yChannelSelector="G" />
         </filter>
         <filter id="doodle-3" x="-12%" y="-12%" width="124%" height="124%">
           <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="41" result="n" />
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="3.6" xChannelSelector="R" yChannelSelector="G" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G" />
         </filter>
         <filter id="doodle-4" x="-12%" y="-12%" width="124%" height="124%">
           <feTurbulence type="fractalNoise" baseFrequency="0.017" numOctaves="3" seed="88" result="n" />
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="6.4" xChannelSelector="R" yChannelSelector="G" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="5.2" xChannelSelector="R" yChannelSelector="G" />
         </filter>
       </defs>
     </svg>
 
-    <div class="screen-glow" aria-hidden="true"></div>
+    <!-- 泡泡场。fixed 铺满视口，所有泡泡都画在这上面 -->
+    <canvas id="bubbleCanvas" aria-hidden="true"></canvas>
+
+    <!--
+      无障碍镜像。
+      canvas 里的内容屏幕阅读器一个字都读不到，这个列表是它们唯一的入口。
+      视觉上隐藏，但可聚焦、可 Tab、可按 Enter 播放。
+    -->
+    <ul class="sr-mirror" id="srMirror" aria-label="声音泡泡列表"></ul>
 
     <div class="app-shell">
-      <header class="app-header">
-        <div>
-          <p class="eyebrow">Cat Sound Bubble Gallery</p>
+      <header class="app-bar">
+        <div class="app-bar-title">
           <h1>猫猫声音泡泡馆</h1>
-          <p class="header-copy" id="collectionCount">已吹出 0 颗声音泡泡</p>
+          <p id="collectionCount">已吹出 0 颗声音泡泡</p>
         </div>
-        <img class="mascot" src="assets/cat-mascot.png" alt="手绘猫咪坐在声音泡泡旁" />
+        <button class="icon-button" id="searchToggle" type="button" aria-expanded="false" aria-controls="filterPanel" aria-label="搜索和筛选">
+          搜
+        </button>
       </header>
 
-      <main>
-        <section class="recorder-panel" aria-labelledby="recordTitle">
-          <div class="recorder-copy">
-            <p class="eyebrow">Blow a mew bubble</p>
-            <h2 id="recordTitle">吹一颗猫声泡泡</h2>
-            <p id="recordHint">点一下开始吹泡泡，再点一下封口。猫声越明显，泡泡越活跃。</p>
-          </div>
-
-          <div class="record-orb-wrap" aria-hidden="true">
-            <div class="record-orb" id="recordBubble">
-              <span class="record-orb-core"></span>
-            </div>
-          </div>
-
-          <div class="record-controls">
-            <button class="record-button" id="recordButton" type="button" aria-pressed="false">
-              <span class="record-dot"></span>
-              <span id="recordButtonText">吹泡泡</span>
-            </button>
-            <div class="record-meta" aria-live="polite">
-              <span id="recordTimer">00:00</span>
-              <span id="recordState">泡泡纸还没沾水</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="toolbar" aria-label="泡泡筛选">
-          <div class="search-wrap">
-            <label for="searchInput">搜泡泡</label>
-            <input id="searchInput" type="search" placeholder="猫咪名、标签、半夜叫" />
-          </div>
-          <div class="chips" id="moodChips" role="list" aria-label="声音类型"></div>
-          <button class="small-toggle" id="favoriteOnly" type="button" aria-pressed="false">只看星点泡泡</button>
-        </section>
-
-        <section class="gallery-head">
-          <div>
-            <p class="eyebrow">Old screen saver mode</p>
-            <h2>漂浮中的声音标本</h2>
-          </div>
+      <section class="filter-panel" id="filterPanel" hidden>
+        <div class="search-wrap">
+          <label for="searchInput">搜泡泡</label>
+          <input id="searchInput" type="search" placeholder="猫咪名、标签、半夜叫" />
+        </div>
+        <div class="chips" id="moodChips" role="list" aria-label="声音类型"></div>
+        <div class="filter-row">
+          <button class="small-toggle" id="favoriteOnly" type="button" aria-pressed="false">只看星星泡泡</button>
           <select id="sortSelect" aria-label="排序方式">
             <option value="newest">最新吹出</option>
             <option value="popular">反复戳过</option>
           </select>
-        </section>
+        </div>
+      </section>
 
-        <section class="gallery bubble-stage" id="gallery" aria-label="猫猫声音泡泡列表"></section>
-      </main>
+      <div class="hint" id="fieldHint">点一颗泡泡，让它破掉发出声音</div>
+
+      <!-- 录音区固定在底部拇指可达范围 -->
+      <div class="record-bar">
+        <div class="record-meta" aria-live="polite">
+          <span id="recordTimer">00:00</span>
+          <span id="recordState">泡泡纸还没沾水</span>
+        </div>
+        <button class="record-button" id="recordButton" type="button" aria-pressed="false" aria-label="开始吹猫声泡泡">
+          <span class="record-dot"></span>
+          <span id="recordButtonText">吹泡泡</span>
+        </button>
+      </div>
     </div>
 
     <dialog class="save-dialog" id="saveDialog">
@@ -133,6 +124,9 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="app.js"></script>
+    <script src="vendor/matter.min.js"></script>
+    <script src="vendor/rough.js"></script>
+    <script src="bubbles.js?v=3"></script>
+    <script src="app.js?v=3"></script>
   </body>
 </html>

@@ -54,7 +54,10 @@ const state = {
   currentMockStop: null,
   currentMockTimer: null,
   currentPlayingId: null,
-  objectUrls: new Map()
+  objectUrls: new Map(),
+  liveCtx: null,
+  liveAnalyser: null,
+  liveRaf: null
 };
 
 const els = {};
@@ -67,18 +70,32 @@ function init() {
   renderMoodChips();
   populateMoodSelect();
   bindEvents();
+
+  BubbleField.init(els.canvas, {
+    moods: MOODS,
+    // 泡泡被戳破 → 放它录到的那段声音
+    onPop: (item) => playItem(item),
+    // 破裂动画结束、泡泡重新飘回来时，把播放次数落盘
+    onPopEnd: () => persist(),
+    // 长按收藏
+    onLongPress: (item) => toggleFavorite(item)
+  });
+
   render();
 }
 
 function cacheElements() {
   els.body = document.body;
-  els.gallery = document.querySelector("#gallery");
+  els.canvas = document.querySelector("#bubbleCanvas");
+  els.srMirror = document.querySelector("#srMirror");
   els.collectionCount = document.querySelector("#collectionCount");
-  els.recordBubble = document.querySelector("#recordBubble");
   els.recordButton = document.querySelector("#recordButton");
   els.recordButtonText = document.querySelector("#recordButtonText");
   els.recordTimer = document.querySelector("#recordTimer");
   els.recordState = document.querySelector("#recordState");
+  els.searchToggle = document.querySelector("#searchToggle");
+  els.filterPanel = document.querySelector("#filterPanel");
+  els.fieldHint = document.querySelector("#fieldHint");
   els.searchInput = document.querySelector("#searchInput");
   els.moodChips = document.querySelector("#moodChips");
   els.favoriteOnly = document.querySelector("#favoriteOnly");
@@ -120,30 +137,19 @@ function bindEvents() {
     render();
   });
 
-  els.gallery.addEventListener("click", (event) => {
-    const favButton = event.target.closest("[data-favorite]");
-    const bubble = event.target.closest("[data-bubble]");
-
-    if (favButton) {
-      event.stopPropagation();
-      const item = state.meows.find((meow) => meow.id === favButton.dataset.favorite);
-      if (item) toggleFavorite(item);
-      return;
-    }
-
-    if (bubble) {
-      const item = state.meows.find((meow) => meow.id === bubble.dataset.bubble);
-      if (item) togglePlay(item);
-    }
+  els.searchToggle.addEventListener("click", () => {
+    const open = els.filterPanel.hidden;
+    els.filterPanel.hidden = !open;
+    els.searchToggle.setAttribute("aria-expanded", String(open));
+    if (open) els.searchInput.focus();
   });
 
-  els.gallery.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    const bubble = event.target.closest("[data-bubble]");
-    if (!bubble) return;
-    event.preventDefault();
-    const item = state.meows.find((meow) => meow.id === bubble.dataset.bubble);
-    if (item) togglePlay(item);
+  // 无障碍镜像里的按钮：键盘用户从这里戳泡泡
+  els.srMirror.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-bubble]");
+    if (!button) return;
+    const item = state.meows.find((meow) => meow.id === button.dataset.bubble);
+    if (item) playItem(item);
   });
 
   els.saveForm.addEventListener("submit", (event) => {
@@ -214,6 +220,7 @@ async function startRecording() {
       });
     });
 
+    startLiveAnalyser(stream);
     state.mediaRecorder.start(250);
     setRecordingState(true, "泡泡正在变大");
   } catch (error) {
@@ -264,6 +271,78 @@ function completeMockRecording() {
   });
 }
 
+/* ====================================================================
+   录音时的实时声音分析
+   MediaRecorder 只负责"存下来"，它不给你任何实时波形。
+   想让泡泡跟着声音抖，必须另外接一条 Web Audio 的分析支路。
+   ==================================================================== */
+
+function startLiveAnalyser(stream) {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+
+  try {
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72; // 平滑一点，否则泡泡会抽搐
+    source.connect(analyser);
+    // ⚠️ 故意不连 ctx.destination —— 连了就会把麦克风的声音放出来，直接啸叫
+    state.liveCtx = ctx;
+    state.liveAnalyser = analyser;
+  } catch (error) {
+    // 分析失败不该影响录音本身，静默降级成"假抖动"
+  }
+}
+
+function stopLiveAnalyser() {
+  if (state.liveRaf) cancelAnimationFrame(state.liveRaf);
+  state.liveRaf = null;
+  if (state.liveCtx) {
+    state.liveCtx.close();
+    state.liveCtx = null;
+  }
+  state.liveAnalyser = null;
+}
+
+function pumpRecordingVisual() {
+  if (!state.isRecording) return;
+
+  const duration = (Date.now() - state.recordingStartedAt) / 1000;
+  let level = 0.3;
+  let pitch = 0.35;
+
+  if (state.liveAnalyser) {
+    const data = new Uint8Array(state.liveAnalyser.frequencyBinCount);
+    state.liveAnalyser.getByteFrequencyData(data);
+
+    let sum = 0;
+    let weighted = 0;
+    for (let i = 0; i < data.length; i += 1) {
+      sum += data[i];
+      weighted += data[i] * i;
+    }
+
+    level = Math.min(1, sum / data.length / 78);
+    /*
+      音高的廉价近似：频谱质心（能量的重心落在高频还是低频）。
+      真正的基频检测要做自相关或 YIN 算法，成本高得多。
+      但这里的目的只是"决定泡泡什么颜色"，质心完全够用 ——
+      工程上很多时候，够用的近似比正确的算法更值。
+    */
+    pitch = sum > 0 ? Math.min(1, weighted / sum / (data.length * 0.4)) : 0.35;
+  } else {
+    // 没有麦克风时的假抖动，让模拟录音也有反馈
+    const t = performance.now() * 0.004;
+    level = 0.32 + Math.sin(t) * 0.18 + Math.sin(t * 2.3) * 0.1;
+    pitch = 0.4 + Math.sin(t * 0.6) * 0.2;
+  }
+
+  BubbleField.setRecording({ duration, level, pitch });
+  state.liveRaf = requestAnimationFrame(pumpRecordingVisual);
+}
+
 function setRecordingState(isRecording, label) {
   state.isRecording = isRecording;
   els.recordButton.setAttribute("aria-pressed", String(isRecording));
@@ -276,26 +355,18 @@ function setRecordingState(isRecording, label) {
   if (isRecording) {
     updateTimer();
     state.timerId = window.setInterval(updateTimer, 300);
+    pumpRecordingVisual(); // 逐帧驱动那颗正在被吹大的泡泡
   } else {
     window.clearInterval(state.timerId);
     state.timerId = null;
     els.recordTimer.textContent = "00:00";
-    if (els.recordBubble) {
-      els.recordBubble.style.setProperty("--record-scale", "1");
-      els.recordBubble.style.setProperty("--record-glow", "0.35");
-    }
+    stopLiveAnalyser();
+    BubbleField.setRecording(null);
   }
 }
 
 function updateTimer() {
-  const duration = getRecordingDuration();
-  els.recordTimer.textContent = formatDuration(duration);
-  if (els.recordBubble) {
-    const scale = Math.min(1.72, 1 + duration * 0.055);
-    const glow = Math.min(1, 0.34 + duration * 0.055);
-    els.recordBubble.style.setProperty("--record-scale", String(scale));
-    els.recordBubble.style.setProperty("--record-glow", String(glow));
-  }
+  els.recordTimer.textContent = formatDuration(getRecordingDuration());
 }
 
 function getRecordingDuration() {
@@ -376,13 +447,12 @@ async function saveDraft() {
   showToast("泡泡封口，轻轻飘进 gallery。");
 }
 
-async function togglePlay(item) {
-  if (state.currentPlayingId === item.id) {
-    stopCurrentSound();
-    render();
-    return;
-  }
-
+/*
+  戳破就响 —— 不再是"点一下播放、再点一下暂停"。
+  泡泡破掉是个一次性动作，不存在"暂停一颗已经破了的泡泡"这种心智模型。
+  交互隐喻一旦选定，代码里的状态机就该跟着简化。
+*/
+async function playItem(item) {
   stopCurrentSound();
   state.currentPlayingId = item.id;
 
@@ -467,7 +537,36 @@ function toggleFavorite(item) {
 function render() {
   renderCount();
   renderFilterState();
-  renderGallery();
+  syncField();
+  renderMirror();
+}
+
+/*
+  筛选直接作用在漂浮层：
+  把"当前该显示哪些泡泡"整份交给 BubbleField，
+  由它决定谁淡出飘走、谁淡入进场。app.js 不关心动画。
+*/
+function syncField() {
+  const list = getVisibleMeows();
+  BubbleField.setItems(list);
+  els.fieldHint.textContent = list.length
+    ? "点一颗泡泡，让它破掉发出声音"
+    : "这里还没有泡泡，先吹一颗吧";
+}
+
+/*
+  无障碍镜像：canvas 对屏幕阅读器是完全不可见的，
+  这个隐藏列表是键盘和读屏用户唯一能操作泡泡的入口。
+*/
+function renderMirror() {
+  const list = getVisibleMeows();
+  els.srMirror.innerHTML = list
+    .map(
+      (item) => `<li><button type="button" data-bubble="${item.id}">
+        戳破 ${escapeHtml(item.title)}，来自${escapeHtml(item.catName)}，${formatDuration(item.duration)}，已戳 ${item.playCount} 次
+      </button></li>`
+    )
+    .join("");
 }
 
 function renderCount() {
@@ -494,101 +593,6 @@ function populateMoodSelect() {
   select.innerHTML = MOODS.filter((mood) => mood.id !== "all")
     .map((mood) => `<option value="${mood.id}">${mood.label}</option>`)
     .join("");
-}
-
-function renderGallery() {
-  const list = getVisibleMeows();
-
-  if (!list.length) {
-    els.gallery.innerHTML = `
-      <div class="empty-state">
-        <h2>这里还没有漂浮泡泡</h2>
-        <p>先吹一颗猫声泡泡，让它慢慢飘进来。</p>
-      </div>
-    `;
-    return;
-  }
-
-  els.gallery.innerHTML = list.map(renderCard).join("");
-}
-
-function renderCard(item) {
-  const mood = getMood(item.mood);
-  const isPlaying = state.currentPlayingId === item.id;
-  const tags = item.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
-  const traits = getBubbleTraits(item);
-  const waveform = item.waveform
-    .map((value, index) => `<span style="height:${Math.round(value * 34 + 8)}px; animation-delay:${index * 0.04}s"></span>`)
-    .join("");
-  const stars = item.favorite
-    ? `<span class="bubble-stars" aria-hidden="true">✦ ✧ ✦</span>`
-    : "";
-
-  return `
-    <article
-      class="meow-card sound-bubble ${isPlaying ? "is-playing" : ""}"
-      data-bubble="${item.id}"
-      tabindex="0"
-      role="button"
-      aria-pressed="${isPlaying}"
-      aria-label="${isPlaying ? "暂停" : "播放"}${escapeHtml(item.title)}"
-      style="${traits.style}"
-    >
-      <div class="bubble-surface">
-        ${stars}
-        <div class="card-top">
-          <div>
-            <h3 class="card-title">${escapeHtml(item.title)}</h3>
-            <p class="card-meta">${escapeHtml(item.catName)} · ${formatDuration(item.duration)} · 戳过 ${item.playCount}</p>
-          </div>
-          <span class="mood-badge">${mood.label}</span>
-        </div>
-        <div class="waveform" aria-hidden="true">${waveform}</div>
-        <div class="tags">${tags}</div>
-        <p class="note">${escapeHtml(item.note)}</p>
-        <div class="card-actions">
-          <span class="play-hint">${isPlaying ? "正在漏声音" : "戳泡泡播放"}</span>
-          <button class="fav-button" type="button" data-favorite="${item.id}" aria-pressed="${item.favorite}" aria-label="${item.favorite ? "取消星点" : "加入星点"}${escapeHtml(item.title)}">
-            ${item.favorite ? "★" : "☆"}
-          </button>
-        </div>
-      </div>
-    </article>
-  `;
-}
-
-function getBubbleTraits(item) {
-  const mood = getMood(item.mood);
-  const waveform = Array.isArray(item.waveform) && item.waveform.length ? item.waveform : generateWaveform(item.id);
-  const loudness = waveform.reduce((sum, value) => sum + value, 0) / waveform.length;
-  const richness = waveform.reduce((sum, value, index) => {
-    const previous = waveform[index - 1] ?? value;
-    return sum + Math.abs(value - previous);
-  }, 0) / waveform.length;
-  const size = Math.round(clamp(148 + item.duration * 9 + loudness * 48, 154, 278));
-  const speed = clamp(10.5 - item.duration * 0.18 - richness * 2.4, 5.8, 12.4).toFixed(2);
-  const wobble = clamp(0.6 + richness * 3.6, 0.72, 2.2).toFixed(2);
-  const glow = clamp(0.22 + loudness * 0.58 + item.playCount * 0.025, 0.28, 0.92).toFixed(2);
-  const hue = mood.hue + Math.round(richness * 64);
-  const delay = ((hashString(item.id) % 90) / -10).toFixed(1);
-  const drift = (hashString(`${item.id}:drift`) % 30 - 15).toString();
-  const tilt = (hashString(`${item.id}:tilt`) % 18 - 9).toString();
-  const opacity = item.source === "recorded" ? "0.84" : "0.72";
-
-  return {
-    style: [
-      `--bubble-size:${size}px`,
-      `--bubble-speed:${speed}s`,
-      `--bubble-wobble:${wobble}`,
-      `--bubble-glow:${glow}`,
-      `--bubble-hue:${hue}`,
-      `--bubble-delay:${delay}s`,
-      `--bubble-drift:${drift}px`,
-      `--bubble-tilt:${tilt}deg`,
-      `--bubble-opacity:${opacity}`,
-      `--card-bg:${item.color || mood.color}`
-    ].join(";")
-  };
 }
 
 function getVisibleMeows() {

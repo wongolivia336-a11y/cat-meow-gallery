@@ -1,0 +1,564 @@
+/* =====================================================================
+   bubbles.js —— 满屏声音泡泡的物理场
+   ---------------------------------------------------------------------
+   三层职责，刻意分开：
+     1. 物理层   Matter.js 只管"泡泡在哪"（位置、速度、碰撞、弹性）
+     2. 外观层   rough.js 把每颗泡泡"预渲染成一张小图"，只画一次
+     3. 绘制层   每帧只做 drawImage + 变换，不重算任何手绘线条
+
+   为什么要预渲染？
+   手绘线条的生成（rough.js 每条线画两遍 + 随机扰动）是有成本的。
+   如果每帧重画 40 颗泡泡的手绘轮廓，低端手机直接跪。
+   "算一次，之后只做变换" —— 这是所有动效性能问题的分水岭。
+   ===================================================================== */
+
+(function () {
+  "use strict";
+
+  const { Engine, Runner, Bodies, Body, Composite, Events } = Matter;
+
+  // 泡泡的运动手感。这几个数是"灵动"与否的全部秘密，值得反复调。
+  const TUNING = {
+    restitution: 0.92,    // 弹性：1 = 完全弹性碰撞永不衰减，0.92 留一点点"泄气感"
+    frictionAir: 0.006,   // 空气阻力：太大泡泡会"沉"，太小会越撞越快
+    maxSpeed: 2.6,        // 速度上限。没有它，多次碰撞会把泡泡加速到乱飞
+    minSpeed: 0.28,       // 速度下限。低于它就补一点力，避免泡泡停在角落装死
+    driftForce: 0.0000075 // 每帧的随机微扰，制造"空气在流动"的错觉
+  };
+
+  const POP_DURATION = 520;    // 破裂动画时长(ms)
+  const RESPAWN_DELAY = 1500;  // 破了多久之后重新吹一颗回来
+  const FADE_SPEED = 0.055;    // 筛选时淡入淡出的速度
+
+  let canvas, ctx, dpr = 1;
+  let engine, runner, walls = [];
+  let bubbles = [];            // { item, body, sprite, radius, alpha, target, state, ... }
+  let pops = [];               // 正在播放的破裂特效
+  let moods = [];
+  let handlers = {};
+  let recording = null;        // { duration, level, pitch } 或 null
+  let recordSeed = 1;
+  let rafId = null;
+
+  /* ------------------------------------------------------------------
+     初始化
+     ------------------------------------------------------------------ */
+
+  function init(canvasEl, options) {
+    canvas = canvasEl;
+    ctx = canvas.getContext("2d");
+    moods = options.moods || [];
+    handlers = {
+      onPop: options.onPop || function () {},
+      onPopEnd: options.onPopEnd || function () {},
+      onLongPress: options.onLongPress || function () {}
+    };
+
+    engine = Engine.create();
+    // 关掉重力 —— 泡泡不该往下掉，它们悬浮在空气里
+    engine.gravity.x = 0;
+    engine.gravity.y = 0;
+
+    runner = Runner.create();
+    Runner.run(runner, engine);
+
+    resize();
+    window.addEventListener("resize", resize);
+
+    // pointer 事件同时覆盖鼠标和触屏，不用分别写 click / touchstart
+    canvas.addEventListener("pointerdown", handlePointer);
+    // 抬手监听挂在 window 上：手指按下后滑出 canvas 再抬起也能正确收尾，
+    // 否则 pressTimer 会残留，下一次点击行为就乱了
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    Events.on(engine, "afterUpdate", governSpeed);
+
+    rafId = requestAnimationFrame(draw);
+  }
+
+  /* ------------------------------------------------------------------
+     画布尺寸 & 四面墙
+     ------------------------------------------------------------------ */
+
+  function resize() {
+    // devicePixelRatio：不处理的话高分屏上所有线条都是糊的
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    buildWalls(w, h);
+  }
+
+  function buildWalls(w, h) {
+    if (walls.length) Composite.remove(engine.world, walls);
+    const T = 200; // 墙做厚一点，防止高速泡泡"穿墙"（隧穿效应）
+    const opts = { isStatic: true, restitution: 1, friction: 0 };
+    walls = [
+      Bodies.rectangle(w / 2, -T / 2, w + T * 2, T, opts),      // 上
+      Bodies.rectangle(w / 2, h + T / 2, w + T * 2, T, opts),   // 下
+      Bodies.rectangle(-T / 2, h / 2, T, h + T * 2, opts),      // 左
+      Bodies.rectangle(w + T / 2, h / 2, T, h + T * 2, opts)    // 右
+    ];
+    Composite.add(engine.world, walls);
+  }
+
+  /* ------------------------------------------------------------------
+     速度治理
+     没有这一步，泡泡会因为反复碰撞越来越快（数值误差累积），
+     几分钟后变成一屏乱窜的子弹。上下限 + 微扰 = 永远"慢悠悠但不静止"。
+     ------------------------------------------------------------------ */
+
+  function governSpeed() {
+    for (const b of bubbles) {
+      if (!b.body || b.state !== "alive") continue;
+      const v = b.body.velocity;
+      const speed = Math.hypot(v.x, v.y);
+
+      if (speed > TUNING.maxSpeed) {
+        const k = TUNING.maxSpeed / speed;
+        Body.setVelocity(b.body, { x: v.x * k, y: v.y * k });
+      } else if (speed < TUNING.minSpeed) {
+        Body.applyForce(b.body, b.body.position, {
+          x: (Math.random() - 0.5) * TUNING.driftForce * 40,
+          y: (Math.random() - 0.5) * TUNING.driftForce * 40
+        });
+      } else {
+        Body.applyForce(b.body, b.body.position, {
+          x: (Math.random() - 0.5) * TUNING.driftForce * b.body.mass * 900,
+          y: (Math.random() - 0.5) * TUNING.driftForce * b.body.mass * 900
+        });
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     数据 → 泡泡形态
+     这段映射是整个产品的灵魂：录得越久泡泡越大，声音越亮颜色越跳。
+     它从旧版 getBubbleTraits() 移植过来，保留了原来的手感。
+     ------------------------------------------------------------------ */
+
+  function traitsOf(item) {
+    const wave = item.waveform && item.waveform.length ? item.waveform : [0.5];
+    const loudness = wave.reduce((s, v) => s + v, 0) / wave.length;
+    const richness = wave.reduce((s, v, i) => s + Math.abs(v - (wave[i - 1] ?? v)), 0) / wave.length;
+
+    const base = Math.min(window.innerWidth, window.innerHeight);
+    const scale = base < 520 ? 0.78 : 1; // 手机上整体缩小，否则三颗就占满屏
+
+    const mood = moods.find((m) => m.id === item.mood) || moods[0] || { hue: 200 };
+    return {
+      radius: clamp((44 + item.duration * 4.2 + loudness * 26) * scale, 34 * scale, 96 * scale),
+      hue: (mood.hue + Math.round(richness * 60)) % 360,
+      seed: hash(item.id) % 9999
+    };
+  }
+
+  /* ------------------------------------------------------------------
+     预渲染：把一颗泡泡画进一张离屏小图
+     这里是唯一会跑 rough.js 的地方，每颗泡泡一生只跑一次。
+     ------------------------------------------------------------------ */
+
+  function makeSprite(item, t) {
+    const pad = 16;
+    const size = (t.radius + pad) * 2;
+    const off = document.createElement("canvas");
+    off.width = Math.round(size * dpr);
+    off.height = Math.round(size * dpr);
+    const c = off.getContext("2d");
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const rc = rough.canvas(off);
+
+    // 泡泡主体：半透明填色 + 手绘双线轮廓
+    rc.circle(cx, cy, t.radius * 2, {
+      stroke: "#443e37",
+      strokeWidth: 1.6,
+      roughness: 1.5,      // 抖动强度
+      bowing: 2.2,         // 线条的"弓形"弯曲量，doodle 感主要来自这个
+      fill: `hsla(${t.hue}, 82%, 86%, 0.5)`,
+      fillStyle: "solid",
+      seed: t.seed
+    });
+
+    // 高光：两笔弧线，稚拙画法就是这么表现反光的
+    c.save();
+    c.strokeStyle = "rgba(255,255,255,0.95)";
+    c.lineWidth = 2.4;
+    c.lineCap = "round";
+    c.beginPath();
+    c.arc(cx, cy, t.radius * 0.68, Math.PI * 1.12, Math.PI * 1.42);
+    c.stroke();
+    c.beginPath();
+    c.arc(cx, cy, t.radius * 0.68, Math.PI * 1.52, Math.PI * 1.6);
+    c.stroke();
+    c.restore();
+
+    // 收藏标记：一颗手绘小星
+    if (item.favorite) {
+      drawStar(c, cx + t.radius * 0.46, cy - t.radius * 0.5, t.radius * 0.15);
+    }
+
+    // 文字：信息密度随泡泡大小变化 —— 小泡泡只放名字，大泡泡才放猫名和时长
+    c.save();
+    c.textAlign = "center";
+    c.fillStyle = "#3f3a34";
+    const titleSize = clamp(t.radius * 0.24, 10, 16);
+    c.font = `700 ${titleSize}px "Comic Sans MS", "YouYuan", "PingFang SC", sans-serif`;
+    c.fillText(ellipsis(c, item.title, t.radius * 1.5), cx, cy + titleSize * 0.35);
+
+    if (t.radius > 52) {
+      const metaSize = titleSize * 0.78;
+      c.font = `${metaSize}px "Comic Sans MS", "YouYuan", "PingFang SC", sans-serif`;
+      c.fillStyle = "#6a635a";
+      c.fillText(`${item.catName} · ${item.duration}s`, cx, cy + titleSize * 0.35 + metaSize * 1.5);
+    }
+    c.restore();
+
+    return { canvas: off, size, half: size / 2 };
+  }
+
+  function drawStar(c, x, y, r) {
+    c.save();
+    c.beginPath();
+    for (let i = 0; i < 5; i += 1) {
+      const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+      const a2 = a + Math.PI / 5;
+      c[i ? "lineTo" : "moveTo"](x + Math.cos(a) * r, y + Math.sin(a) * r);
+      c.lineTo(x + Math.cos(a2) * r * 0.45, y + Math.sin(a2) * r * 0.45);
+    }
+    c.closePath();
+    c.fillStyle = "#f9c22e";
+    c.fill();
+    c.strokeStyle = "#443e37";
+    c.lineWidth = 1.2;
+    c.stroke();
+    c.restore();
+  }
+
+  function ellipsis(c, text, maxWidth) {
+    if (c.measureText(text).width <= maxWidth) return text;
+    let s = text;
+    while (s.length > 1 && c.measureText(s + "…").width > maxWidth) s = s.slice(0, -1);
+    return s + "…";
+  }
+
+  /* ------------------------------------------------------------------
+     同步：把"当前应该显示哪些泡泡"喂进来
+     筛选就是在这里生效的 —— 不符合条件的泡泡淡出飘走，符合的淡入。
+     ------------------------------------------------------------------ */
+
+  function setItems(items) {
+    const wanted = new Map(items.map((i) => [i.id, i]));
+
+    // 已经不在列表里的：标记淡出，不立刻删（要给动画留时间）
+    for (const b of bubbles) {
+      if (!wanted.has(b.item.id)) {
+        b.target = 0;
+      } else {
+        b.target = 1;
+        const next = wanted.get(b.item.id);
+        b.item = next;
+        /*
+          只在"画面上看得见的字段"变了时才重绘贴图。
+          playCount 每戳一次就变，但它不画在泡泡上 —— 如果把它算进 key，
+          每次播放都会重跑一次 rough.js，白白浪费。
+        */
+        const key = spriteKey(next);
+        if (key !== b.spriteKey) {
+          b.sprite = makeSprite(next, { radius: b.radius, hue: b.hue, seed: b.seed });
+          b.spriteKey = key;
+        }
+      }
+    }
+
+    // 新出现的：造一颗
+    const existing = new Set(bubbles.map((b) => b.item.id));
+    for (const item of items) {
+      if (!existing.has(item.id)) spawn(item);
+    }
+  }
+
+  function spawn(item, atEdge) {
+    const t = traitsOf(item);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const x = atEdge ? (Math.random() < 0.5 ? t.radius + 4 : w - t.radius - 4) : rand(t.radius, w - t.radius);
+    const y = atEdge ? rand(t.radius, h - t.radius) : rand(t.radius, h - t.radius);
+
+    const body = Bodies.circle(x, y, t.radius, {
+      restitution: TUNING.restitution,
+      frictionAir: TUNING.frictionAir,
+      friction: 0,
+      density: 0.0009
+    });
+    Body.setVelocity(body, { x: rand(-1.4, 1.4), y: rand(-1.4, 1.4) });
+    Composite.add(engine.world, body);
+
+    bubbles.push({
+      item,
+      body,
+      radius: t.radius,
+      hue: t.hue,
+      seed: t.seed,
+      sprite: makeSprite(item, t),
+      spriteKey: spriteKey(item),
+      alpha: 0,
+      target: 1,
+      state: "alive",
+      popAt: 0,
+      respawnAt: 0
+    });
+  }
+
+  // 贴图只依赖这几个"画得出来"的字段
+  function spriteKey(item) {
+    return `${item.favorite}|${item.title}|${item.catName}|${item.duration}`;
+  }
+
+  /* ------------------------------------------------------------------
+     戳破
+     ------------------------------------------------------------------ */
+
+  /*
+    短按戳破，长按收藏。
+    移动端没有右键也没有 hover，长按是唯一自然的"第二动作"。
+    500ms 是业界常用阈值（iOS 长按 ~500ms，Android ~500ms），
+    比这短会误触，比这长用户会以为没反应。
+  */
+  const LONG_PRESS_MS = 500;
+  let pressTarget = null;
+  let pressTimer = null;
+
+  function hitTest(event) {
+    const rect = canvas.getBoundingClientRect();
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    // 从后往前找：视觉上盖在最上层的泡泡应该优先被戳中
+    for (let i = bubbles.length - 1; i >= 0; i -= 1) {
+      const b = bubbles[i];
+      if (b.state !== "alive" || b.alpha < 0.35) continue;
+      if (Math.hypot(px - b.body.position.x, py - b.body.position.y) <= b.radius) return b;
+    }
+    return null;
+  }
+
+  function handlePointer(event) {
+    const b = hitTest(event);
+    if (!b) return;
+    pressTarget = b;
+
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      pressTarget = null;
+      // 长按：收藏，并给一点触觉反馈（支持的设备上）
+      if (navigator.vibrate) navigator.vibrate(18);
+      handlers.onLongPress(b.item);
+    }, LONG_PRESS_MS);
+  }
+
+  function handlePointerUp() {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+      // 计时器还没到 → 是短按 → 戳破
+      if (pressTarget && pressTarget.state === "alive") pop(pressTarget);
+    }
+    pressTarget = null;
+  }
+
+  function pop(b) {
+    b.state = "popped";
+    b.popAt = performance.now();
+    b.respawnAt = b.popAt + RESPAWN_DELAY;
+    Composite.remove(engine.world, b.body);
+
+    pops.push({
+      x: b.body.position.x,
+      y: b.body.position.y,
+      r: b.radius,
+      hue: b.hue,
+      start: performance.now(),
+      // 碎片：破裂时溅出的小圆点，稚拙画法的"啪"
+      bits: Array.from({ length: 9 }, () => ({
+        a: Math.random() * Math.PI * 2,
+        d: rand(0.5, 1.25),
+        s: rand(2, 5)
+      }))
+    });
+
+    handlers.onPop(b.item);
+  }
+
+  /* ------------------------------------------------------------------
+     录音中的那颗大泡泡
+     level（音量）→ 半径脉动 + 抖动幅度
+     pitch（音高）→ 色相
+     这是"声音特征直接变成视觉"的地方，也是产品最该被看见的一秒。
+     ------------------------------------------------------------------ */
+
+  function setRecording(data) {
+    recording = data;
+    if (data) recordSeed = 1;
+  }
+
+  function drawRecordBubble(now) {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // 越录越大，但用 sqrt 收敛，否则录 30 秒会撑爆屏幕
+    const grow = Math.sqrt(recording.duration) * 26;
+    const base = Math.min(w, h) * 0.12 + grow;
+    const radius = Math.min(base, Math.min(w, h) * 0.42);
+
+    // 音量推动半径脉动 —— 就是"吹气"的手感
+    const pulse = 1 + recording.level * 0.22;
+    const r = radius * pulse;
+    const hue = 190 + recording.pitch * 140;
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+
+    // 抖动的轮廓：用极坐标采样 + 噪声，音量越大抖得越狠
+    const wobble = 2 + recording.level * 14;
+    ctx.beginPath();
+    const STEPS = 60;
+    for (let i = 0; i <= STEPS; i += 1) {
+      const a = (i / STEPS) * Math.PI * 2;
+      const n = Math.sin(a * 3 + now * 0.006) * 0.5 + Math.sin(a * 5 - now * 0.009) * 0.5;
+      const rr = r + n * wobble;
+      const x = cx + Math.cos(a) * rr;
+      const y = cy + Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = `hsla(${hue}, 84%, 86%, 0.45)`;
+    ctx.fill();
+    ctx.strokeStyle = "#443e37";
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    // 高光
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.66, Math.PI * 1.1, Math.PI * 1.4);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /* ------------------------------------------------------------------
+     主绘制循环
+     ------------------------------------------------------------------ */
+
+  function draw() {
+    const now = performance.now();
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    for (let i = bubbles.length - 1; i >= 0; i -= 1) {
+      const b = bubbles[i];
+
+      if (b.state === "popped") {
+        if (now >= b.respawnAt) {
+          // 重新吹一颗回来。从边缘进场，像刚飘进画面
+          bubbles.splice(i, 1);
+          handlers.onPopEnd(b.item);
+          spawnRespawn(b.item);
+        }
+        continue;
+      }
+
+      // 淡入淡出：筛选的视觉表达
+      b.alpha += (b.target - b.alpha) * FADE_SPEED * 3;
+      if (b.target === 0 && b.alpha < 0.02) {
+        Composite.remove(engine.world, b.body);
+        bubbles.splice(i, 1);
+        continue;
+      }
+
+      const p = b.body.position;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, b.alpha);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(b.body.angle * 0.35); // 只跟随一点点旋转，全跟会晕
+      // ⬇︎ 每帧真正做的事就这一句：贴一张已经画好的图
+      ctx.drawImage(b.sprite.canvas, -b.sprite.half, -b.sprite.half, b.sprite.size, b.sprite.size);
+      ctx.restore();
+    }
+
+    // 破裂特效
+    for (let i = pops.length - 1; i >= 0; i -= 1) {
+      const p = pops[i];
+      const t = (now - p.start) / POP_DURATION;
+      if (t >= 1) { pops.splice(i, 1); continue; }
+      drawPop(p, t);
+    }
+
+    if (recording) drawRecordBubble(now);
+
+    rafId = requestAnimationFrame(draw);
+  }
+
+  function drawPop(p, t) {
+    const ease = 1 - Math.pow(1 - t, 3);
+    ctx.save();
+    ctx.globalAlpha = 1 - t;
+
+    // 扩散的手绘圆环
+    ctx.strokeStyle = `hsl(${p.hue}, 70%, 58%)`;
+    ctx.lineWidth = 2.2 * (1 - t) + 0.6;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * (1 + ease * 0.55), 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 溅出的碎片
+    ctx.fillStyle = `hsl(${p.hue}, 78%, 72%)`;
+    ctx.strokeStyle = "#443e37";
+    ctx.lineWidth = 1;
+    for (const bit of p.bits) {
+      const d = p.r * (0.85 + ease * bit.d);
+      const x = p.x + Math.cos(bit.a) * d;
+      const y = p.y + Math.sin(bit.a) * d;
+      ctx.beginPath();
+      ctx.arc(x, y, bit.s * (1 - t * 0.6), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function spawnRespawn(item) {
+    spawn(item, true);
+    const b = bubbles[bubbles.length - 1];
+    if (b) b.alpha = 0;
+  }
+
+  /* ------------------------------------------------------------------
+     工具
+     ------------------------------------------------------------------ */
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function hash(s) {
+    return String(s).split("").reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381);
+  }
+
+  function destroy() {
+    if (rafId) cancelAnimationFrame(rafId);
+    window.removeEventListener("resize", resize);
+    Runner.stop(runner);
+    Engine.clear(engine);
+  }
+
+  window.BubbleField = { init, setItems, setRecording, destroy, TUNING };
+})();
