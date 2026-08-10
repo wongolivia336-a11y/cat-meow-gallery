@@ -38,6 +38,14 @@
   let moods = [];
   let handlers = {};
   let recording = null;        // { duration, level, pitch } 或 null
+  /*
+    录音时整个泡泡场的透明度。
+    录音是这个产品唯一需要"专注"的时刻 —— 其余泡泡必须退场，
+    否则用户的注意力被一屏乱飞的东西分掉，也看不清自己吹的这颗有多大。
+    用缓动而不是直接隐藏：突然消失是故障感，慢慢退开才是"让位"。
+  */
+  let fieldDim = 1;
+  let coverage = 0.46;         // 目标覆盖率，采集端会调低
   let recordSeed = 1;
   let rafId = null;
 
@@ -181,7 +189,7 @@
     const area = window.innerWidth * window.innerHeight;
     const base = Math.min(window.innerWidth, window.innerHeight);
     const avgR = base < 520 ? 46 : 68;
-    const want = Math.round((area * 0.46) / (Math.PI * avgR * avgR));
+    const want = Math.round((area * coverage) / (Math.PI * avgR * avgR));
     // 上限 38：再多物理引擎和绘制都还撑得住，但视觉上已经太吵
     return clamp(want, Math.min(itemCount, 6), 38);
   }
@@ -561,16 +569,34 @@
     if (data) recordSeed = 1;
   }
 
+  /*
+    两套模式，不是两种布局。
+
+    ambient（电脑）= 屏保。泡泡要撑满屏幕，那是产品的全部内容。
+    capture（手机）= 工具。你是来录音的，满屏乱飞的泡泡会盖住录音按钮、
+    抢走注意力，还让你找不到刚录的那一颗。密度降到三分之一。
+  */
+  function setMode(mode) {
+    const next = mode === "capture" ? 0.16 : 0.46;
+    if (next === coverage) return;
+    coverage = next;
+    if (lastItems) setItems(lastItems);
+  }
+
   function drawRecordBubble(now) {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     const cx = w / 2;
     const cy = h / 2;
 
-    // 越录越大，但用 sqrt 收敛，否则录 30 秒会撑爆屏幕
-    const grow = Math.sqrt(recording.duration) * 26;
-    const base = Math.min(w, h) * 0.12 + grow;
-    const radius = Math.min(base, Math.min(w, h) * 0.42);
+    /*
+      越录越大，但用 sqrt 收敛 —— 线性增长录 30 秒会撑爆屏幕。
+      上限 0.3：更大的话泡泡会顶到屏幕边缘，"吹起来的一颗"就变成了"一块背景色"，
+      失去了它是个泡泡的感觉。
+    */
+    const short = Math.min(w, h);
+    const grow = Math.sqrt(recording.duration) * 20;
+    const radius = Math.min(short * 0.08 + grow, short * 0.3);
 
     // 音量推动半径脉动 —— 就是"吹气"的手感
     const pulse = 1 + recording.level * 0.22;
@@ -580,8 +606,12 @@
     ctx.save();
     ctx.globalAlpha = 0.92;
 
-    // 抖动的轮廓：用极坐标采样 + 噪声，音量越大抖得越狠
-    const wobble = 2 + recording.level * 14;
+    /*
+      抖动的轮廓：极坐标采样 + 噪声，音量越大抖得越狠。
+      幅度必须按半径成比例 —— 固定像素值在泡泡吹大之后
+      会显得越来越平静，恰好和"声音越来越响"的直觉相反。
+    */
+    const wobble = (0.03 + recording.level * 0.1) * r;
     ctx.beginPath();
     const STEPS = 60;
     for (let i = 0; i <= STEPS; i += 1) {
@@ -620,6 +650,9 @@
     const h = canvas.clientHeight;
     ctx.clearRect(0, 0, w, h);
 
+    // 录音时其他泡泡整体退开，给正在被吹的那颗让出一块纯净的背景
+    fieldDim += ((recording ? 0 : 1) - fieldDim) * 0.055;
+
     for (let i = bubbles.length - 1; i >= 0; i -= 1) {
       const b = bubbles[i];
 
@@ -635,15 +668,16 @@
 
       // 淡入淡出：筛选的视觉表达
       b.alpha += (b.target - b.alpha) * FADE_SPEED * 3;
-      if (b.target === 0 && b.alpha < 0.02) {
+      if (b.target === 0 && b.alpha < 0.02 && fieldDim > 0.05) {
         Composite.remove(engine.world, b.body);
         bubbles.splice(i, 1);
         continue;
       }
 
       const p = b.body.position;
+      if (b.alpha * fieldDim < 0.01) continue; // 全透明就别浪费一次 drawImage
       ctx.save();
-      ctx.globalAlpha = Math.min(1, b.alpha);
+      ctx.globalAlpha = Math.min(1, b.alpha) * fieldDim;
       ctx.translate(p.x, p.y);
       /*
         故意不旋转。
@@ -733,5 +767,7 @@
     return false;
   }
 
-  window.BubbleField = { init, setItems, setRecording, hitTestAt, faceDataUrl, destroy, TUNING };
+  window.BubbleField = {
+    init, setItems, setRecording, setMode, hitTestAt, faceDataUrl, destroy, TUNING
+  };
 })();

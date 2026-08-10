@@ -288,9 +288,54 @@ body.is-pet.is-control::after {
 }
 
 .icon-button {
+  display: grid;
+  place-items: center;
   width: 44px;
   padding: 0;
   flex: 0 0 auto;
+}
+
+.icon-button svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ====================================================================
+   录音中：界面收敛
+   录音是这个产品唯一需要专注的时刻。
+   其余泡泡由 canvas 负责退场，这里负责让 UI 也让位 ——
+   只留计时器和封口按钮，其余淡出。
+   ==================================================================== */
+
+body.is-recording .app-bar,
+body.is-recording .filter-panel,
+body.is-recording .hint {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+
+body.is-recording .record-meta {
+  transition: transform 600ms ease;
+}
+
+/* ====================================================================
+   采集端（手机）：录音按钮是主角，永远在场
+   ==================================================================== */
+
+body.mode-capture .record-button {
+  width: 96px;
+  height: 96px;
+}
+
+body.mode-capture .record-bar {
+  justify-content: center;
+  gap: 22px;
 }
 
 .icon-button:active::before,

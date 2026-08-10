@@ -73,7 +73,8 @@ const state = {
   settings: { catName: "多米" },
   restTimer: null,
   isResting: false,
-  controlMode: false
+  controlMode: false,
+  mode: null // "capture"（手机，工具）或 "ambient"（电脑，屏保）
 };
 
 const els = {};
@@ -99,6 +100,8 @@ function init() {
   });
 
   setupDesktopPet();
+  applyMode();
+  window.addEventListener("resize", applyMode);
   render();
 }
 
@@ -255,16 +258,34 @@ function setupDesktopPet() {
    休息的时候不该看见搜索框、筛选器和按钮 —— 那些是工具的语言。
    ==================================================================== */
 
-/*
-  两级关系：手机是采集端，电脑是屏保端。
+/* ====================================================================
+   两套模式 —— 不是两种布局，是两个产品
 
-  这不只是布局差异，是行为差异 ——
-  在手机上你是"来录一段猫叫"的，把录音按钮自动藏起来是敌意设计；
-  在电脑上你是"工作累了看两眼"的，界面就该退场。
-  所以休息模式只在宽屏生效。
-*/
+   capture（手机）：工具。你是来录一段猫叫的。
+     录音按钮永远在、永远大；泡泡密度降到三分之一，只当背景；
+     不进休息模式（把录音按钮藏起来是敌意设计）。
+
+   ambient（电脑）：屏保。你工作累了抬眼看两眼。
+     泡泡撑满屏幕，那是全部内容；空闲 4 秒界面退场。
+   ==================================================================== */
+
+function currentMode() {
+  return window.innerWidth >= 720 ? "ambient" : "capture";
+}
+
+function applyMode() {
+  const mode = currentMode();
+  if (state.mode === mode) return;
+  state.mode = mode;
+  els.body.classList.toggle("mode-ambient", mode === "ambient");
+  els.body.classList.toggle("mode-capture", mode === "capture");
+  BubbleField.setMode(mode);
+  if (mode === "capture") wakeUp();
+  else scheduleRest();
+}
+
 function isAmbientDevice() {
-  return window.innerWidth >= 720;
+  return state.mode === "ambient";
 }
 
 function scheduleRest() {

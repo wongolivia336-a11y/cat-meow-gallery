@@ -16,10 +16,20 @@
 
 这是"个性"这个词唯一能落地的地方。少了这一步，下面所有规格都只能产出好看但不属于你的东西。
 
-在动手前先把这行填了：
+### 多米的外观（已确定）
 
-> **多米的外观：**（毛色 / 花纹 / 脸型 / 眼睛颜色 / 有没有标志性特征）
-> `________________________________________________`
+参考图：`assets/domi-reference.png`
+
+> **银虎斑短毛猫（银渐层 / 美短银虎斑）。**
+> 银白色底毛，背部和头顶有深灰色虎斑纹，胸口、下巴、四只爪子是纯白的。
+> 圆脸、圆头、短鼻，**大而圆的浅绿色眼睛**（这是最强的辨识特征）。
+> 粉色小鼻头，白色长胡须，短毛蓬松。
+
+**把这段文字 + 参考图一起喂给生图工具。**
+
+⚠️ 参考图本身是照片级 3D 渲染、深色背景 —— 那是**风格反面教材**。
+只借用它的"这只猫长什么样"，风格必须完全按下面的锚点走。
+prompt 里建议显式加一句 `NOT photorealistic, NOT 3D render`。
 
 ---
 
@@ -124,7 +134,11 @@ picture-book illustration
 ```
 A 3x2 grid of six cat head illustrations on a plain pure white background,
 evenly spaced, uniform line weight, the SAME cat in all six cells.
-The cat: 【多米的外观】
+The cat (same in every cell): a round-faced silver tabby shorthair kitten,
+silvery-white base coat with dark grey tabby stripes on head and back,
+pure white chin chest and paws, big round pale-green eyes, pink nose.
+NOT photorealistic, NOT a 3D render, NOT fluffy rendered fur —
+flat naive crayon illustration only.
 Six expressions, left to right, top to bottom:
 1) sweet squinting happy eyes with small open mouth, head slightly tilted
 2) wide excited round eyes, mouth open, eager

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#fdfcf9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>meow gallery</title>
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=11" />
   </head>
   <body>
     <!--
@@ -53,8 +53,16 @@
           <h1>meow gallery</h1>
           <p id="collectionCount">已吹出 0 颗声音泡泡</p>
         </div>
+        <!--
+          手绘放大镜。刻意不用几何完美的圆 ——
+          用两段 path 拼出略歪的镜圈，和整套手绘语言对齐。
+          aria-label 保留文字语义，图标本身对读屏器隐藏。
+        -->
         <button class="icon-button" id="searchToggle" type="button" aria-expanded="false" aria-controls="filterPanel" aria-label="搜索和筛选">
-          搜
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M10.6 3.4c4 -0.3 7.2 3.1 6.9 6.9c-0.3 3.6 -3.2 6.2 -6.8 6.1c-3.8 -0.1 -6.6 -3.1 -6.5 -6.7c0.1 -3.4 2.7 -6.1 6.4 -6.3z" />
+            <path d="M15.4 15.1c1.9 1.7 3.7 3.4 5.4 5.2" />
+          </svg>
         </button>
       </header>
 
@@ -126,7 +134,7 @@
 
     <script src="vendor/matter.min.js"></script>
     <script src="vendor/rough.js"></script>
-    <script src="bubbles.js?v=9"></script>
-    <script src="app.js?v=9"></script>
+    <script src="bubbles.js?v=11"></script>
+    <script src="app.js?v=11"></script>
   </body>
 </html>
