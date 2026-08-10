@@ -1,30 +1,40 @@
 :root {
   color-scheme: light;
 
-  /* 纸 —— 稚拙风的底不是白，是有点脏、有点旧的米黄 */
-  --paper: #fbf2e0;
-  --paper-2: #f4e7cf;
-  --paper-deep: #ead9bc;
+  /*
+    纸 —— 轻盈版：近白，只留一丝暖。
+    米黄底会把整页的"重量"抬上来，泡泡就飘不起来了。
+  */
+  --paper: #fdfcf9;
+  --paper-2: #f7f5f0;
+  --paper-deep: #efece5;
 
-  /* 墨 —— 不用纯黑。手绘的线是笔尖蘸的深褐墨，黑得太硬会像矢量图 */
-  --ink: #463a30;
-  --ink-soft: #6d5c4c;
-  --muted: #8a7663;
-  --line: #463a30;
+  /* 墨 —— 不用纯黑，但要够深。轻盈靠"线细"，不靠"线浅"（线浅只会脏） */
+  --ink: #3f3a34;
+  --ink-soft: #6a635a;
+  --muted: #948c81;
+  --line: #443e37;
 
-  /* 蜡笔色 —— 饱和、平涂、不透明。玻璃感靠渐变，稚拙感靠色块 */
-  --pink: #f58ba8;
-  --bell: #f6c445;
-  --mint: #74c4a8;
-  --sky: #7fb2e5;
-  --lilac: #b096dd;
-  --tomato: #ee7b58;
+  /* 蜡笔色 —— 底变白了，饱和度要跟着提，否则颜色会显得没精神 */
+  --pink: #f77ea2;
+  --bell: #f9c22e;
+  --mint: #5cc9a7;
+  --sky: #6aaeee;
+  --lilac: #a98ce4;
+  --tomato: #f4744d;
 
-  --shadow: rgba(70, 58, 48, 0.18);
+  --shadow: rgba(63, 58, 52, 0.12);
 
-  /* 线宽收在一处：手绘感对线宽极敏感，粗一点就变卡通，细一点就变病历本 */
-  --stroke: 2.5px;
-  --stroke-thin: 2px;
+  /*
+    线宽收在一处。这一版从 2.5px 收到 1.8px ——
+    手绘感对线宽极敏感：粗一点变卡通厚重，细一点变病历本。
+    轻盈的秘诀是「细线 + 高对比」，不是「粗线 + 浅色」。
+  */
+  --stroke: 1.8px;
+  --stroke-thin: 1.4px;
+
+  /* 投影从"不透明硬边贴纸"改成"极淡的一点位移"，重量立刻掉下来 */
+  --lift-default: 2px 2px 0 rgba(63, 58, 52, 0.16);
 
   font-family: "Comic Sans MS", "Chalkboard SE", "YouYuan", "幼圆", "Yuanti SC",
     "圆体-简", "Microsoft YaHei UI", "PingFang SC", sans-serif;
@@ -52,9 +62,12 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   color: var(--ink);
-  /* 纸不是均匀的一块色：中心亮、四角脏，模拟一张摊开的速写本 */
+  /*
+    纸不是均匀的一块色，但轻盈版要克制：
+    中心几乎纯白，只在边缘落一点点凉灰，制造"空气感"而不是"陈旧感"。
+  */
   background:
-    radial-gradient(ellipse 120% 90% at 50% 8%, #fdf7ea 0%, var(--paper) 42%, var(--paper-2) 100%);
+    radial-gradient(ellipse 130% 100% at 50% 6%, #ffffff 0%, var(--paper) 46%, var(--paper-2) 100%);
 }
 
 body::before,
@@ -72,7 +85,8 @@ body::after {
 */
 body::before {
   z-index: -2;
-  opacity: 0.5;
+  /* 颗粒从 0.5 收到 0.16：留一丝纸感，但别让它变成噪点脏底 */
+  opacity: 0.16;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23g)'/%3E%3C/svg%3E");
   background-size: 260px 260px;
   mix-blend-mode: multiply;
@@ -83,8 +97,8 @@ body::after {
   z-index: -1;
   opacity: 0.5;
   background-image:
-    linear-gradient(rgba(70, 58, 48, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(70, 58, 48, 0.055) 1px, transparent 1px);
+    linear-gradient(rgba(63, 58, 52, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(63, 58, 52, 0.04) 1px, transparent 1px);
   background-size: 30px 30px, 30px 30px;
 }
 
@@ -1129,7 +1143,7 @@ textarea,
   border-radius: inherit;
   background: var(--fill, var(--paper));
   /* 硬边偏移投影 —— 贴纸感。它也会被滤镜一起推歪，所以投影边缘同样是手绘的 */
-  box-shadow: var(--lift, 3px 3px 0 rgba(70, 58, 48, 0.82));
+  box-shadow: var(--lift, var(--lift-default));
   filter: url(#doodle-1);
   transition: box-shadow 140ms ease, background 140ms ease;
 }
@@ -1191,7 +1205,7 @@ h2 {
 .card-title { color: var(--ink); }
 
 .mascot {
-  filter: drop-shadow(4px 5px 0 rgba(70, 58, 48, 0.24));
+  filter: drop-shadow(3px 4px 0 rgba(63, 58, 52, 0.12));
 }
 
 /* ---------- 控件 ---------- */
@@ -1250,7 +1264,7 @@ button:focus-visible {
 .ghost-button:hover::before,
 .primary-button:hover::before,
 .fav-button:hover::before {
-  --lift: 2px 2px 0 rgba(70, 58, 48, 0.82);
+  --lift: 1px 1px 0 rgba(63, 58, 52, 0.16);
 }
 
 .chip[aria-pressed="true"],
@@ -1272,7 +1286,7 @@ button:focus-visible {
 
 .record-button::before {
   --fill: var(--tomato);
-  --lift: 4px 4px 0 rgba(70, 58, 48, 0.82);
+  --lift: 3px 3px 0 rgba(63, 58, 52, 0.2);
 }
 
 .record-dot {
@@ -1331,10 +1345,10 @@ button:focus-visible {
   inset: 0;
   z-index: -1;
   /* 蜡笔平涂：一个色，不做渐变。--bubble-hue 仍由音频数据驱动 */
-  background: hsl(var(--bubble-hue) 64% 86%);
+  background: hsl(var(--bubble-hue) 82% 88% / 0.62);
   border: var(--stroke) solid var(--line);
   border-radius: inherit;
-  box-shadow: 4px 5px 0 rgba(70, 58, 48, 0.7);
+  box-shadow: 3px 3px 0 rgba(63, 58, 52, 0.14);
   filter: url(#doodle-1);
   mix-blend-mode: normal;
 }
@@ -1358,7 +1372,7 @@ button:focus-visible {
 }
 
 .sound-bubble.is-playing .bubble-surface::before {
-  box-shadow: 4px 5px 0 rgba(70, 58, 48, 0.7), 0 0 0 var(--stroke) var(--tomato);
+  box-shadow: 3px 3px 0 rgba(63, 58, 52, 0.14), 0 0 0 var(--stroke) var(--tomato);
 }
 
 .meow-card.is-playing {
@@ -1378,7 +1392,7 @@ button:focus-visible {
   border: var(--stroke-thin) solid var(--line);
   border-radius: 10px 7px 11px 8px;
   background: #fffdf6;
-  box-shadow: 2px 2px 0 rgba(70, 58, 48, 0.5);
+  box-shadow: 1px 1px 0 rgba(63, 58, 52, 0.14);
   color: var(--ink);
   font-weight: 700;
 }
@@ -1394,7 +1408,7 @@ button:focus-visible {
 }
 
 .save-dialog::backdrop {
-  background: rgba(70, 58, 48, 0.42);
+  background: rgba(63, 58, 52, 0.28);
 }
 
 .toast {
@@ -1402,7 +1416,7 @@ button:focus-visible {
   border-radius: 14px 11px 15px 12px;
   background: var(--bell);
   color: var(--ink);
-  box-shadow: 3px 3px 0 rgba(70, 58, 48, 0.82);
+  box-shadow: 2px 2px 0 rgba(63, 58, 52, 0.18);
 }
 
 /* 玻璃时代的残留光晕，纸上不需要 */
