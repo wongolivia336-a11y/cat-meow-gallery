@@ -56,6 +56,37 @@
   box-sizing: border-box;
 }
 
+/*
+  滚动条统一收细并调成墨色。
+  系统默认滚动条是这套手绘界面里唯一没法"画"的东西 ——
+  一条灰蓝色的方角长条出现在纸面上，整个风格当场断掉。
+*/
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(63, 58, 52, 0.24) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(63, 58, 52, 0.24);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(63, 58, 52, 0.4);
+  background-clip: content-box;
+}
+
 html,
 body {
   height: 100%;
@@ -405,6 +436,127 @@ textarea:focus,
 button:focus-visible {
   outline: var(--stroke) dashed var(--tomato);
   outline-offset: 3px;
+}
+
+/* ====================================================================
+   声音类型 combobox
+   原生 <select> 的展开列表由操作系统绘制，CSS 管不到 ——
+   所以这里整个自己实现，才能让下拉也保持手绘语言。
+   ==================================================================== */
+
+.combo {
+  position: relative;
+}
+
+.combo input {
+  padding-right: 40px; /* 给右侧箭头让位 */
+}
+
+.combo-caret {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.combo-caret::before {
+  content: none; /* 这个按钮不要手绘边框，它只是个箭头 */
+}
+
+.combo-caret svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms ease;
+}
+
+.combo[data-open="true"] .combo-caret svg {
+  transform: rotate(180deg);
+}
+
+.combo-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  isolation: isolate;
+  max-height: 340px; /* 刚好放下 6 个内置类型，不用滚 */
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  border-radius: 15px 12px 16px 13px;
+  list-style: none;
+}
+
+.combo-list::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: var(--stroke) solid var(--line);
+  border-radius: inherit;
+  background: #fffdf8;
+  box-shadow: 3px 4px 0 rgba(63, 58, 52, 0.14);
+  filter: url(#doodle-2);
+}
+
+.combo-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 11px 8px 12px 9px;
+  color: var(--ink);
+  cursor: pointer;
+  /* 手绘风格里"选中"不该是一条冷冰冰的蓝条 */
+  transition: background 120ms ease;
+}
+
+.combo-option:hover,
+.combo-option[data-active="true"] {
+  background: rgba(249, 194, 46, 0.34);
+}
+
+.combo-option[aria-selected="true"] {
+  background: rgba(92, 201, 167, 0.34);
+  font-weight: 700;
+}
+
+.combo-option img {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+}
+
+/* "新建一个" 那一行：虚线框，和已有选项区分开 */
+.combo-option.is-create {
+  border: var(--stroke-thin) dashed var(--muted);
+  color: var(--ink-soft);
+}
+
+.combo-option.is-create strong {
+  color: var(--ink);
+}
+
+.combo-empty {
+  padding: 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-align: center;
 }
 
 /* chip 上的多米小脸，和泡泡里那张是同一份代码画的 */

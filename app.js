@@ -70,7 +70,7 @@ const state = {
   liveAnalyser: null,
   liveRaf: null,
   // 用户一般只有一只猫，所以猫名是一次性设置，不是每条录音的字段
-  settings: { catName: "多米" },
+  settings: { catName: "多米", customMoods: [] },
   restTimer: null,
   isResting: false,
   controlMode: false,
@@ -86,11 +86,11 @@ function init() {
   restore();
   restoreSettings();
   renderMoodChips();
-  populateMoodSelect();
+  setupMoodCombo();
   bindEvents();
 
   BubbleField.init(els.canvas, {
-    moods: MOODS,
+    moods: allMoods(),
     // 泡泡被戳破 → 放它录到的那段声音
     onPop: (item) => playItem(item),
     // 破裂动画结束、泡泡重新飘回来时，把播放次数落盘
@@ -120,6 +120,11 @@ function cacheElements() {
   els.searchInput = document.querySelector("#searchInput");
   els.catNameInput = document.querySelector("#catNameInput");
   els.moodChips = document.querySelector("#moodChips");
+  els.moodCombo = document.querySelector("#moodCombo");
+  els.moodInput = document.querySelector("#moodInput");
+  els.moodCaret = document.querySelector("#moodCaret");
+  els.moodListbox = document.querySelector("#moodListbox");
+  els.moodValue = document.querySelector("#moodValue");
   els.favoriteOnly = document.querySelector("#favoriteOnly");
   els.sortSelect = document.querySelector("#sortSelect");
   els.saveDialog = document.querySelector("#saveDialog");
@@ -542,7 +547,7 @@ function openSaveDraft(draft) {
   };
 
   els.saveForm.elements.title.value = draft.title;
-  els.saveForm.elements.mood.value = pickDefaultMood();
+  setMoodValue(pickDefaultMood());
   els.saveForm.elements.tags.value = draft.source === "mock" ? "模拟, 奶音" : "刚吹出, 奶音";
   els.saveForm.elements.note.value = draft.source === "recorded" ? "本次会话录到的一颗声音泡泡。" : "没有麦克风时生成的小小占位泡泡。";
 
@@ -729,20 +734,168 @@ function renderFilterState() {
 }
 
 function renderMoodChips() {
-  els.moodChips.innerHTML = MOODS.map((mood) => {
+  els.moodChips.innerHTML = allMoods().map((mood) => {
     // "全部"没有对应表情，留空图标位，避免硬凑一个看不懂的图形
     const face = mood.id === "all"
       ? ""
-      : `<img class="chip-face" src="${BubbleField.faceDataUrl(mood.id, 26)}" alt="" />`;
+      : `<img class="chip-face" src="${BubbleField.faceDataUrl(mood.id, 28)}" alt="" />`;
     return `<button class="chip" type="button" data-mood="${mood.id}" aria-pressed="false">${face}${mood.label}</button>`;
   }).join("");
 }
 
-function populateMoodSelect() {
-  const select = els.saveForm.elements.mood;
-  select.innerHTML = MOODS.filter((mood) => mood.id !== "all")
-    .map((mood) => `<option value="${mood.id}">${mood.label}</option>`)
+/* ====================================================================
+   声音类型 combobox
+   自己实现而不是用原生 <select>：原生下拉列表由操作系统绘制，
+   CSS 一个属性都管不到，手绘风格到那里必然断掉。
+   自己做还顺带拿到"可以自己起名字"这个能力。
+   ==================================================================== */
+
+/*
+  typed 这个标志很关键。
+  输入框里平时显示着当前选中项的名字（比如"奶声抗议"），
+  如果直接把它当搜索词，一展开就只剩那一项 —— 用户看不到别的选择。
+  所以：展开时列全部，只有用户真的敲了字才开始过滤。
+*/
+const combo = { open: false, active: 0, items: [], typed: false };
+
+function setupMoodCombo() {
+  els.moodInput.addEventListener("focus", openCombo);
+  els.moodInput.addEventListener("input", () => {
+    combo.typed = true;
+    combo.active = 0;
+    openCombo();
+    renderComboList();
+  });
+
+  els.moodCaret.addEventListener("click", () => {
+    if (combo.open) {
+      closeCombo();
+    } else {
+      els.moodInput.focus();
+      openCombo();
+    }
+  });
+
+  /*
+    用 mousedown 而不是 click。
+    click 要等 mouseup，而 mousedown 时 input 已经先 blur 了 ——
+    列表会在点中之前就关掉。preventDefault 阻止 blur，焦点留在输入框。
+  */
+  els.moodListbox.addEventListener("mousedown", (event) => {
+    const option = event.target.closest("[data-value]");
+    if (!option) return;
+    event.preventDefault();
+    chooseMood(option.dataset.value, option.dataset.label);
+  });
+
+  els.moodInput.addEventListener("keydown", onComboKey);
+  els.moodInput.addEventListener("blur", closeCombo);
+}
+
+function openCombo() {
+  if (combo.open) return;
+  combo.open = true;
+  combo.typed = false;
+  els.moodCombo.dataset.open = "true";
+  els.moodListbox.hidden = false;
+  els.moodInput.setAttribute("aria-expanded", "true");
+
+  // 高亮定位到当前选中项，方向键从"我现在选的"开始走，而不是从头
+  const current = selectableMoods().findIndex((mood) => mood.id === els.moodValue.value);
+  combo.active = current >= 0 ? current : 0;
+  renderComboList();
+}
+
+function closeCombo() {
+  if (!combo.open) return;
+  combo.open = false;
+  els.moodCombo.dataset.open = "false";
+  els.moodListbox.hidden = true;
+  els.moodInput.setAttribute("aria-expanded", "false");
+
+  // 输入到一半没选就关掉的话，把文字还原成当前真正选中的那个，
+  // 否则输入框会显示一个并不生效的值 —— 典型的"界面在骗人"
+  if (els.moodValue.value) els.moodInput.value = getMood(els.moodValue.value).label;
+}
+
+function renderComboList() {
+  const query = combo.typed ? els.moodInput.value.trim().toLowerCase() : "";
+  const options = selectableMoods();
+  const matched = query
+    ? options.filter((mood) => mood.label.toLowerCase().includes(query))
+    : options;
+  const isExact = options.some((mood) => mood.label.toLowerCase() === query);
+
+  combo.items = matched.map((mood) => ({ value: mood.id, label: mood.label }));
+  if (query && !isExact) {
+    combo.items.unshift({ value: "", label: els.moodInput.value.trim(), create: true });
+  }
+  combo.active = clamp(combo.active, 0, Math.max(0, combo.items.length - 1));
+
+  if (!combo.items.length) {
+    els.moodListbox.innerHTML = `<li class="combo-empty">没有匹配的类型，输入新名字可以自己建一个</li>`;
+    return;
+  }
+
+  els.moodListbox.innerHTML = combo.items
+    .map((item, index) => {
+      const active = index === combo.active;
+      if (item.create) {
+        return `<li class="combo-option is-create" role="option" aria-selected="false"
+          data-value="" data-label="${escapeHtml(item.label)}" data-active="${active}"
+          >＋ 新建「<strong>${escapeHtml(item.label)}</strong>」</li>`;
+      }
+      const selected = els.moodValue.value === item.value;
+      return `<li class="combo-option" role="option" aria-selected="${selected}"
+        data-value="${escapeHtml(item.value)}" data-label="${escapeHtml(item.label)}" data-active="${active}"
+        ><img src="${BubbleField.faceDataUrl(item.value, 30)}" alt="" />${escapeHtml(item.label)}</li>`;
+    })
     .join("");
+
+  const activeEl = els.moodListbox.querySelector('[data-active="true"]');
+  if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
+}
+
+function onComboKey(event) {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    if (!combo.open) {
+      openCombo();
+      return;
+    }
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    combo.active = (combo.active + step + combo.items.length) % combo.items.length;
+    renderComboList();
+    return;
+  }
+
+  if (event.key === "Enter" && combo.open) {
+    // 不 preventDefault 的话回车会顺手提交整个表单
+    event.preventDefault();
+    const item = combo.items[combo.active];
+    if (item) chooseMood(item.value, item.label);
+    return;
+  }
+
+  if (event.key === "Escape" && combo.open) {
+    // 同样要拦住，否则 <dialog> 会跟着一起被关掉
+    event.preventDefault();
+    event.stopPropagation();
+    closeCombo();
+  }
+}
+
+function chooseMood(value, label) {
+  const mood = value ? getMood(value) : createCustomMood(label);
+  if (!mood) return;
+  setMoodValue(mood.id);
+  closeCombo();
+}
+
+function setMoodValue(id) {
+  const mood = getMood(id);
+  els.moodValue.value = mood.id;
+  els.moodInput.value = mood.label;
 }
 
 function getVisibleMeows() {
@@ -774,6 +927,19 @@ function restoreSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     if (saved.catName) state.settings.catName = String(saved.catName).slice(0, 16);
+
+    // 自建类型逐条校验再收下：存储可能被手改过、也可能是旧版本写的
+    if (Array.isArray(saved.customMoods)) {
+      state.settings.customMoods = saved.customMoods
+        .filter((mood) => mood && typeof mood.id === "string" && typeof mood.label === "string")
+        .map((mood) => ({
+          id: mood.id,
+          label: String(mood.label).slice(0, 12),
+          hue: Number.isFinite(mood.hue) ? mood.hue : hashString(mood.label) % 360,
+          color: mood.color || `hsl(${hashString(mood.label) % 360} 72% 90%)`,
+          custom: true
+        }));
+    }
   } catch (error) {
     // 设置读坏了不该拦住 App 启动，用默认值继续
   }
@@ -964,12 +1130,51 @@ function normalizeItem(item) {
   };
 }
 
+/* ====================================================================
+   声音类型：内置 6 种 + 用户自建
+   多米可能会发出任何内置分类装不下的声音，所以类型必须可扩展。
+   ==================================================================== */
+
+function allMoods() {
+  return MOODS.concat(state.settings.customMoods || []);
+}
+
+function selectableMoods() {
+  return allMoods().filter((mood) => mood.id !== "all");
+}
+
 function getMood(id) {
-  return MOODS.find((mood) => mood.id === id) || MOODS[0];
+  return allMoods().find((mood) => mood.id === id) || MOODS[0];
+}
+
+function createCustomMood(rawLabel) {
+  const label = cleanText(rawLabel, "").slice(0, 12);
+  if (!label) return null;
+
+  // 同名直接复用，避免用户反复输入同一个词造出一堆重复类型
+  const existing = selectableMoods().find((mood) => mood.label === label);
+  if (existing) return existing;
+
+  // 色相由名字散列得到 —— 同一个名字永远是同一个颜色，换设备也一致
+  const hue = hashString(label) % 360;
+  const mood = {
+    id: `custom:${hashString(label).toString(36)}`,
+    label,
+    hue,
+    color: `hsl(${hue} 72% 90%)`,
+    custom: true
+  };
+
+  state.settings.customMoods = (state.settings.customMoods || []).concat(mood);
+  persistSettings();
+  BubbleField.setMoods(allMoods());
+  renderMoodChips();
+  renderFilterState();
+  return mood;
 }
 
 function pickDefaultMood() {
-  const options = MOODS.filter((mood) => mood.id !== "all");
+  const options = selectableMoods();
   return options[Math.floor(Math.random() * options.length)].id;
 }
 

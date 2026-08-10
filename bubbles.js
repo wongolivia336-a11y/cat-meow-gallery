@@ -276,16 +276,32 @@
     protest: { eye: "cross",  mouth: "open",  tilt: -0.1 }   // 抗议：皱眉
   };
 
-  function drawDomiFace(c, cx, cy, r, mood) {
-    const f = FACES[mood] || FACES.sweet;
-    const ink = "rgba(58, 52, 46, 0.78)";
+  /*
+    自定义类型没有预设表情。
+    不要一律 fallback 到 sweet —— 那样所有自建类型长得一模一样。
+    按 id 散列稳定地挑一种，同一个类型永远是同一张脸。
+  */
+  function faceFor(mood) {
+    if (FACES[mood]) return FACES[mood];
+    const keys = Object.keys(FACES);
+    return FACES[keys[hash(String(mood)) % keys.length]];
+  }
+
+  function drawDomiFace(c, cx, cy, r, mood, opts) {
+    const f = faceFor(mood);
+    /*
+      泡泡上的脸要淡（它在半透明填色之上，太重会跟外框抢）；
+      但当成独立小图标用时必须加重，否则 26px 下看着就是一团灰。
+    */
+    const bold = opts && opts.boldest;
+    const ink = bold ? "rgba(58, 52, 46, 0.95)" : "rgba(58, 52, 46, 0.78)";
 
     c.save();
     c.translate(cx, cy);
     c.rotate(f.tilt); // 一点点歪头，比端正可爱得多
     c.strokeStyle = ink;
     c.fillStyle = ink;
-    c.lineWidth = Math.max(1.4, r * 0.032);
+    c.lineWidth = bold ? Math.max(1.5, r * 0.085) : Math.max(1.4, r * 0.032);
     c.lineCap = "round";
     c.lineJoin = "round";
 
@@ -473,13 +489,17 @@
     以后改表情不会出现"泡泡上笑着、chip 上闭着眼"这种事。
   */
   function faceDataUrl(mood, size) {
-    const px = size || 26;
+    const px = size || 30;
+    // 3 倍超采样：小图标里的细线在 2x 下仍然发虚
+    const ss = 3;
     const off = document.createElement("canvas");
-    off.width = Math.round(px * 2);
-    off.height = Math.round(px * 2);
+    off.width = Math.round(px * ss);
+    off.height = Math.round(px * ss);
     const c = off.getContext("2d");
-    c.setTransform(2, 0, 0, 2, 0, 0);
-    drawDomiFace(c, px / 2, px / 2, px * 0.42, mood);
+    c.setTransform(ss, 0, 0, ss, 0, 0);
+    // 0.46 而不是 0.42：耳朵画到 -0.56r、胡须伸到 0.72r，
+    // 半径给太小的话这些都被挤在中间，缩略图看着就是一团灰
+    drawDomiFace(c, px / 2, px / 2, px * 0.46, mood, { boldest: true });
     return off.toDataURL();
   }
 
@@ -767,7 +787,13 @@
     return false;
   }
 
+  // 用户新建自定义类型后要能立刻拿到新色相，所以 moods 不能只在 init 时传一次
+  function setMoods(next) {
+    moods = next || [];
+  }
+
   window.BubbleField = {
-    init, setItems, setRecording, setMode, hitTestAt, faceDataUrl, destroy, TUNING
+    init, setItems, setRecording, setMode, setMoods,
+    hitTestAt, faceDataUrl, destroy, TUNING
   };
 })();

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#fdfcf9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>meow gallery</title>
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <!--
@@ -110,10 +110,36 @@
             泡泡名字
             <input name="title" maxlength="24" required />
           </label>
-          <label>
+          <!--
+            自定义 combobox，不用原生 <select>。
+            原因很硬：原生 select 展开后的列表由操作系统绘制，
+            CSS 一个属性都管不到 —— 手绘风格到那里必然断掉。
+            自己做还顺带拿到了"可以自己起名字"这个能力。
+          -->
+          <label for="moodInput">
             声音类型
-            <select name="mood"></select>
+            <div class="combo" id="moodCombo">
+              <input
+                id="moodInput"
+                type="text"
+                role="combobox"
+                aria-expanded="false"
+                aria-controls="moodListbox"
+                aria-autocomplete="list"
+                aria-haspopup="listbox"
+                autocomplete="off"
+                maxlength="12"
+                placeholder="选一个，或自己起一个"
+              />
+              <button class="combo-caret" id="moodCaret" type="button" tabindex="-1" aria-label="展开声音类型列表">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5.6 9.1c2.2 2.5 4.3 4.7 6.5 6.5c2.2 -1.9 4.3 -4.2 6.3 -6.7" />
+                </svg>
+              </button>
+              <ul class="combo-list" id="moodListbox" role="listbox" aria-label="声音类型" hidden></ul>
+            </div>
           </label>
+          <input type="hidden" name="mood" id="moodValue" />
           <label>
             小标签
             <input name="tags" maxlength="40" placeholder="奶音, 半夜, 饭盆" />
@@ -134,7 +160,7 @@
 
     <script src="vendor/matter.min.js"></script>
     <script src="vendor/rough.js"></script>
-    <script src="bubbles.js?v=11"></script>
-    <script src="app.js?v=11"></script>
+    <script src="bubbles.js?v=15"></script>
+    <script src="app.js?v=15"></script>
   </body>
 </html>
