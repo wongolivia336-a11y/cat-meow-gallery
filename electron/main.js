@@ -95,6 +95,32 @@ function setControlMode(on) {
   buildTray();
 }
 
+/*
+  托盘图标。
+  ⚠️ 这不是装饰 —— 桌宠没有任务栏图标、没有窗口边框，
+  托盘是用户退出这个程序的唯一入口。图标加载失败 = 应用关不掉。
+  所以这里逐个候选文件试，并且兜底画一个纯色圆点，绝不允许出现空图标。
+*/
+function loadTrayIcon() {
+  const candidates = ["domi-tray.png", "domi-reference.png"];
+
+  for (const name of candidates) {
+    const img = nativeImage.createFromPath(path.join(ROOT, "assets", name));
+    if (!img.isEmpty()) return img.resize({ width: 16, height: 16 });
+  }
+
+  // 所有素材都没有时的兜底：一个 16x16 的橘色圆点，至少点得到
+  const size = 16;
+  const canvas = nativeImage.createFromDataURL(
+    "data:image/svg+xml;base64," +
+      Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">` +
+          `<circle cx="8" cy="8" r="7" fill="#f4744d" stroke="#443e37" stroke-width="1.5"/></svg>`
+      ).toString("base64")
+  );
+  return canvas.isEmpty() ? nativeImage.createEmpty() : canvas;
+}
+
 function buildTray() {
   const menu = Menu.buildFromTemplate([
     {
@@ -106,11 +132,7 @@ function buildTray() {
   ]);
 
   if (!tray) {
-    // 复用已有的猫咪素材当托盘图标，省一个资源文件
-    const icon = nativeImage
-      .createFromPath(path.join(ROOT, "assets", "cat-mascot.png"))
-      .resize({ width: 16, height: 16 });
-    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+    tray = new Tray(loadTrayIcon());
     tray.setToolTip("meow gallery");
     tray.on("click", () => setControlMode(!controlMode));
   }
