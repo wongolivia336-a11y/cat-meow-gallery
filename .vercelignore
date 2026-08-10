@@ -1,0 +1,12 @@
+# 桌宠只在本地跑，不该被部署到网页版
+electron/
+node_modules/
+
+# 开发用
+devserver.py
+.claude/
+
+# 文档不影响运行，但也没必要占部署体积
+ASSET_BRIEF.md
+PRODUCT_NOTES.md
+HANDOFF_DESKTOP_PET.md

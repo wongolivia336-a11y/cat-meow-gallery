@@ -327,13 +327,20 @@
      ------------------------------------------------------------------ */
 
   // 每种 mood 一种表情。改这张表就等于改整套图标。
+  /*
+    每种 mood 一种表情。改这张表就等于改整套图标。
+
+    ω 嘴（倒 m）是猫脸最可爱的那一笔，所以让它当主力 ——
+    只有"在大声叫"的两种（饭盆、抗议）用张开的嘴，
+    因为张嘴才读得出"正在发出声音"。
+  */
   const FACES = {
-    sweet:   { eye: "happy",  mouth: "open",  tilt: -0.06 }, // 撒娇：眯眼张嘴
-    food:    { eye: "wide",   mouth: "open",  tilt: 0.04 },  // 饭盆：瞪大眼
-    sleepy:  { eye: "closed", mouth: "small", tilt: 0.1 },   // 困困：闭眼
-    purr:    { eye: "happy",  mouth: "w",     tilt: -0.03 }, // 呼噜：满足
-    mystery: { eye: "wonk",   mouth: "small", tilt: 0.12 },  // 疑惑：一只眼眯着
-    protest: { eye: "cross",  mouth: "open",  tilt: -0.1 }   // 抗议：皱眉
+    sweet:   { eye: "happy",  mouth: "w",    tilt: -0.06, mouthScale: 1.05 }, // 撒娇：眯眼努嘴
+    food:    { eye: "wide",   mouth: "open", tilt: 0.04 },                    // 饭盆：瞪大眼在叫
+    sleepy:  { eye: "closed", mouth: "w",    tilt: 0.1,  mouthScale: 0.72 },  // 困困：闭眼小努嘴
+    purr:    { eye: "happy",  mouth: "w",    tilt: -0.03, mouthScale: 1.15 }, // 呼噜：最满足，嘴最鼓
+    mystery: { eye: "wonk",   mouth: "w",    tilt: 0.12, mouthScale: 0.85 },  // 疑惑：歪头小努嘴
+    protest: { eye: "cross",  mouth: "open", tilt: -0.1 }                     // 抗议：皱眉张嘴
   };
 
   /*
@@ -426,11 +433,31 @@
         .map((p) => ({ x: p.x * rx + (rng() - 0.5) * amp, y: (p.y - my) * ry + my + (rng() - 0.5) * amp }));
       inkStroke(c, pts, rng, w * 0.9);
     } else if (f.mouth === "w") {
-      // ω 形猫嘴，两个弧刻意不一样大
-      const s1 = r * (0.055 + rng() * 0.025);
-      const s2 = r * (0.055 + rng() * 0.025);
-      inkStroke(c, jitterArc(-s1, my, s1, Math.PI, Math.PI * 2, rng, amp * 0.7, 6), rng, w * 0.9);
-      inkStroke(c, jitterArc(s2, my, s2, Math.PI, Math.PI * 2, rng, amp * 0.7, 6), rng, w * 0.9);
+      /*
+        ω 嘴（倒 m）—— 猫脸的招牌。
+
+        ⚠️ 角度方向很容易搞反：canvas 的 y 轴向下，
+        PI→2PI 扫的是上半圈，画出来是 ∩∩ 也就是正的 m（嘴角朝下，像在生气）；
+        0→PI 扫下半圈才是 ∪∪ = ω，两瓣往下鼓的努嘴。
+
+        两瓣刻意不一样大、不一样高，中间那个小尖也歪一点 —— 对称就不可爱了。
+      */
+      const scale = f.mouthScale || 1;
+      const s1 = r * (0.062 + rng() * 0.028) * scale;
+      const s2 = r * (0.062 + rng() * 0.028) * scale;
+      const dip = r * 0.012 * scale;          // 两瓣的高低差
+      const peak = (rng() - 0.5) * r * 0.02;  // 中间小尖的左右偏移
+
+      inkStroke(c, jitterArc(-s1 + peak, my, s1, 0, Math.PI, rng, amp * 0.6, 7), rng, w * 0.95);
+      inkStroke(c, jitterArc(s2 + peak, my - dip, s2, 0, Math.PI, rng, amp * 0.6, 7), rng, w * 0.95);
+
+      // 中间往上挑一小笔，努嘴的那个尖就出来了
+      inkStroke(
+        c,
+        jitterLine(peak, my, peak + (rng() - 0.5) * r * 0.01, my - r * 0.045 * scale, rng, amp * 0.5, 3),
+        rng,
+        w * 0.8
+      );
     } else {
       inkStroke(c, jitterLine(-r * 0.06, my, r * 0.06, my + (rng() - 0.5) * r * 0.02, rng, amp, 3), rng, w * 0.9);
     }
