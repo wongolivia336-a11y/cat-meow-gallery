@@ -1,3 +1,5 @@
+node_modules/
+dist/
 server.log
 server.err.log
 .DS_Store

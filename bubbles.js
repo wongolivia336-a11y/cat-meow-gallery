@@ -610,5 +610,19 @@
     Engine.clear(engine);
   }
 
-  window.BubbleField = { init, setItems, setRecording, destroy, TUNING };
+  /*
+    给桌宠模式用：某个屏幕坐标下有没有泡泡。
+    Electron 的透明窗口默认整块穿透（鼠标点到桌面上），
+    只有鼠标悬在泡泡上时才临时关掉穿透 —— 否则这个窗口会挡住你所有工作。
+  */
+  function hitTestAt(x, y) {
+    for (let i = bubbles.length - 1; i >= 0; i -= 1) {
+      const b = bubbles[i];
+      if (b.state !== "alive" || b.alpha < 0.35) continue;
+      if (Math.hypot(x - b.body.position.x, y - b.body.position.y) <= b.radius) return true;
+    }
+    return false;
+  }
+
+  window.BubbleField = { init, setItems, setRecording, hitTestAt, destroy, TUNING };
 })();

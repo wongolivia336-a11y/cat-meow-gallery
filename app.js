@@ -1,7 +1,15 @@
-const STORAGE_KEY = "cat-mew-gallery:v1";
-const SETTINGS_KEY = "cat-mew-gallery:settings";
+const STORAGE_KEY = "meow-gallery:v1";
+const SETTINGS_KEY = "meow-gallery:settings";
+// 改名前的旧 key，启动时做一次性搬迁，别让老用户数据凭空消失
+const LEGACY_KEYS = { data: "cat-mew-gallery:v1", settings: "cat-mew-gallery:settings" };
 // 空闲多久之后进入休息模式（隐藏所有 UI，只剩泡泡）
 const REST_IDLE_MS = 4000;
+/*
+  IndexedDB 的库名故意不跟着改名。
+  重命名一个 IndexedDB 意味着要把里面每一个音频 Blob 逐条读出来再写进新库 ——
+  纯粹的风险，零收益，而且用户永远看不见这个名字。
+  命名一致性不值得拿用户的录音去赌。
+*/
 const AUDIO_DB_NAME = "cat-mew-gallery-audio";
 const AUDIO_DB_VERSION = 1;
 const AUDIO_STORE_NAME = "audioBlobs";
@@ -62,9 +70,10 @@ const state = {
   liveAnalyser: null,
   liveRaf: null,
   // 用户一般只有一只猫，所以猫名是一次性设置，不是每条录音的字段
-  settings: { catName: "" },
+  settings: { catName: "多米" },
   restTimer: null,
-  isResting: false
+  isResting: false,
+  controlMode: false
 };
 
 const els = {};
@@ -89,6 +98,7 @@ function init() {
     onLongPress: (item) => toggleFavorite(item)
   });
 
+  setupDesktopPet();
   render();
 }
 
@@ -185,6 +195,57 @@ function bindEvents() {
     state.draft = null;
     els.saveDialog.close();
     showToast("先放回空气里。");
+  });
+}
+
+/* ====================================================================
+   桌宠模式（仅 Electron 下生效，浏览器里这段整个跳过）
+   ==================================================================== */
+
+function setupDesktopPet() {
+  if (!window.meowPet?.isPet) return;
+  els.body.classList.add("is-pet");
+
+  let lastX = -1;
+  let lastY = -1;
+  let interactive = false;
+
+  const evaluate = () => {
+    if (state.controlMode || lastX < 0) return;
+    const over = BubbleField.hitTestAt(lastX, lastY);
+    if (over === interactive) return;
+    interactive = over;
+    window.meowPet.setInteractive(over);
+  };
+
+  window.addEventListener("mousemove", (event) => {
+    lastX = event.clientX;
+    lastY = event.clientY;
+    evaluate();
+  }, { passive: true });
+
+  /*
+    ⚠️ 光有 mousemove 是不够的。
+    鼠标不动、泡泡自己飘走的情况下不会有任何事件，
+    窗口就会一直卡在"可交互"状态，把你正在工作的窗口整块挡住。
+    所以必须用定时器按最后已知坐标重新判定。
+  */
+  window.setInterval(evaluate, 160);
+
+  window.meowPet.onControlMode((on) => {
+    state.controlMode = on;
+    els.body.classList.toggle("is-control", on);
+    if (on) {
+      wakeUp();
+    } else {
+      interactive = false;
+      scheduleRest();
+    }
+  });
+
+  // 控制界面里按 Esc 退回穿透状态，不用每次都去点托盘
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.controlMode) window.meowPet.exitControlMode();
   });
 }
 
@@ -479,7 +540,7 @@ async function saveDraft() {
   const item = {
     ...state.draft,
     title: cleanText(form.get("title"), "刚捡到的一声"),
-    catName: state.settings.catName || "我的猫",
+    catName: state.settings.catName || "多米",
     mood,
     tags: splitTags(form.get("tags")),
     note: cleanText(form.get("note"), "一颗还没写来历的小泡泡。"),
@@ -702,7 +763,17 @@ function persistSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
 }
 
+// 一次性搬迁：把旧 key 的内容挪到新 key，挪完保留旧的当备份
+function migrateLegacyKeys() {
+  for (const [target, legacy] of [[STORAGE_KEY, LEGACY_KEYS.data], [SETTINGS_KEY, LEGACY_KEYS.settings]]) {
+    if (!localStorage.getItem(target) && localStorage.getItem(legacy)) {
+      localStorage.setItem(target, localStorage.getItem(legacy));
+    }
+  }
+}
+
 function restore() {
+  migrateLegacyKeys();
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     state.meows = getSeedMeows();

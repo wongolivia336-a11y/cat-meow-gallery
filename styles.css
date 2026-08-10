@@ -126,6 +126,41 @@ body.is-resting .app-shell * {
   pointer-events: none;
 }
 
+/* ====================================================================
+   桌宠模式
+   窗口是透明的，所以纸底和颗粒必须让位 —— 背后是你真实的桌面。
+   ==================================================================== */
+
+body.is-pet,
+body.is-pet html {
+  background: transparent;
+}
+
+body.is-pet::before {
+  display: none;
+}
+
+/* 桌宠平时只有泡泡，控制界面由托盘或 Esc 切换 */
+body.is-pet .app-shell {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.is-pet.is-control .app-shell {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 控制界面模式下给一块半透明底，否则表单浮在桌面上完全看不清 */
+body.is-pet.is-control::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: rgba(253, 252, 249, 0.86);
+  pointer-events: none;
+}
+
 .app-bar {
   display: flex;
   align-items: flex-start;

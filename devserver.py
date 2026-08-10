@@ -27,5 +27,5 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    print(f"猫猫声音泡泡馆 → http://127.0.0.1:{port}/  (no-store)")
+    print(f"meow gallery → http://127.0.0.1:{port}/  (no-store)")
     ThreadingHTTPServer(("127.0.0.1", port), NoCacheHandler).serve_forever()

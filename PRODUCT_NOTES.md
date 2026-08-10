@@ -1,4 +1,4 @@
-# 猫猫声音泡泡馆
+# meow gallery
 
 一个私人猫声屏保 App：猫猫的 meow、purr、mrrp、半夜叫不再是音频文件列表，
 而是一屏会自由漂浮、互相碰撞、戳一下就"啪"地破掉发出声音的泡泡。
@@ -63,6 +63,39 @@ canvas 里的内容屏幕阅读器一个字都读不到。
 - 不做公开社区、审核、举报、关系链
 - 不做复杂音频剪辑、混音、滤镜
 - 不做健康监测和医疗判断
+
+## 桌宠模式（Electron）
+
+泡泡飘在你真实的桌面上，平时整窗点击穿透，只有鼠标悬在泡泡上时才接管点击。
+
+```bash
+npm run pet
+```
+
+- **托盘图标**：单击切换控制界面（录音、筛选、改猫名）
+- **Esc**：退出控制界面，回到穿透状态
+- **退出**：托盘右键 → 退出
+
+### 为什么是桌宠而不是屏保
+
+屏保是"你不在的时候"出现的，一动鼠标就退出。
+而"工作间隙的休息"这个场景里，人就坐在电脑前 —— 屏保根本不会启动。
+
+### 两个装机坑
+
+**1. Electron 二进制下不来**
+`npm install` 会显示成功，但 `node_modules/electron/dist` 是空的 ——
+postinstall 从 GitHub Releases 下载被墙掉了，而且它**不报错**。
+
+```bash
+$env:ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
+node node_modules/electron/install.js
+```
+
+**2. 不能用 `loadFile()`**
+`file://` 的 origin 是 null，不算安全上下文，`getUserMedia` 会被直接拒绝，
+录音功能静默失败。所以主进程注册了一个 `meow://` 私有协议
+（`registerSchemesAsPrivileged` 里标了 `secure: true`）来加载页面。
 
 ## 本地运行
 
