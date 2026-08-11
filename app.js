@@ -88,6 +88,8 @@ const els = {};
 
 document.addEventListener("DOMContentLoaded", init);
 
+if (window.Capacitor?.isNativePlatform?.()) document.body?.classList.add("is-native-app");
+
 function init() {
   cacheElements();
   restore();
@@ -106,12 +108,11 @@ function init() {
     onLongPress: (item) => toggleFavorite(item)
   });
 
-  window.DomiPet?.init({ getItems: () => state.meows });
-
   setupDesktopPet();
   applyMode();
   window.addEventListener("resize", applyMode);
   render();
+  setupCloudSync();
 }
 
 function cacheElements() {
@@ -128,6 +129,19 @@ function cacheElements() {
   els.aboutDialog = document.querySelector("#aboutDialog");
   els.aboutClose = document.querySelector("#aboutClose");
   els.installPwaButton = document.querySelector("#installPwaButton");
+  els.accountButton = document.querySelector("#accountButton");
+  els.authDialog = document.querySelector("#authDialog");
+  els.authClose = document.querySelector("#authClose");
+  els.authForm = document.querySelector("#authForm");
+  els.authEmail = document.querySelector("#authEmail");
+  els.authOtp = document.querySelector("#authOtp");
+  els.otpLabel = document.querySelector("#otpLabel");
+  els.authSubmit = document.querySelector("#authSubmit");
+  els.authSigned = document.querySelector("#authSigned");
+  els.authIdentity = document.querySelector("#authIdentity");
+  els.syncNowButton = document.querySelector("#syncNowButton");
+  els.signOutButton = document.querySelector("#signOutButton");
+  els.syncStatus = document.querySelector("#syncStatus");
   els.filterPanel = document.querySelector("#filterPanel");
   els.fieldHint = document.querySelector("#fieldHint");
   els.searchInput = document.querySelector("#searchInput");
@@ -151,6 +165,11 @@ function cacheElements() {
 }
 
 function bindEvents() {
+  els.accountButton?.addEventListener("click", () => els.authDialog?.showModal());
+  els.authClose?.addEventListener("click", () => els.authDialog?.close());
+  els.authForm?.addEventListener("submit", handleAuthSubmit);
+  els.syncNowButton?.addEventListener("click", () => window.CloudSync?.syncNow());
+  els.signOutButton?.addEventListener("click", () => window.CloudSync?.signOut());
   els.aboutButton?.addEventListener("click", () => els.aboutDialog?.showModal());
   els.aboutClose?.addEventListener("click", () => els.aboutDialog?.close());
   els.installPwaButton?.addEventListener("click", async () => {
@@ -242,6 +261,7 @@ function bindEvents() {
 function setupDesktopPet() {
   if (!window.meowPet?.isPet) return;
   els.body.classList.add("is-pet");
+  window.DomiPet?.init({ getItems: () => state.meows });
 
   let lastX = -1;
   let lastY = -1;
@@ -272,6 +292,7 @@ function setupDesktopPet() {
   window.meowPet.onControlMode((on) => {
     state.controlMode = on;
     els.body.classList.toggle("is-control", on);
+    window.DomiPet?.setControlMode(on);
     if (on) {
       wakeUp();
     } else {
@@ -283,6 +304,8 @@ function setupDesktopPet() {
   window.meowPet.onShowtime(() => {
     window.DomiPet?.startShowtime(() => window.meowPet.showtimeDone());
   });
+
+  window.meowPet.onPetCorner?.((corner) => window.DomiPet?.setCorner(corner));
 
   // 控制界面里按 Esc 退回穿透状态，不用每次都去点托盘
   window.addEventListener("keydown", (event) => {
@@ -1624,6 +1647,54 @@ function showToast(message) {
   showToast.timeout = window.setTimeout(() => {
     els.toast.classList.remove("is-visible");
   }, 2200);
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const email = els.authEmail.value.trim();
+  const token = els.authOtp.value.trim();
+  if (!email) return;
+  els.authSubmit.disabled = true;
+  try {
+    if (els.otpLabel.hidden || !token) {
+      await window.CloudSync.sendOtp(email);
+      els.otpLabel.hidden = false;
+      els.authOtp.required = true;
+      els.authSubmit.textContent = "验证并登录";
+      els.syncStatus.textContent = "验证码已发送，请查看邮箱。";
+      els.authOtp.focus();
+    } else {
+      await window.CloudSync.verifyOtp(email, token);
+      els.syncStatus.textContent = "登录成功，正在同步。";
+    }
+  } catch (error) {
+    els.syncStatus.textContent = `登录失败：${error.message || "请稍后重试"}`;
+  } finally {
+    els.authSubmit.disabled = false;
+  }
+}
+
+function setupCloudSync() {
+  window.CloudSync?.init({
+    getItems: () => state.meows,
+    getBlob: (key) => getAudioBlob(key),
+    putBlob: (key, blob) => putAudioBlob(key, blob),
+    makeAudioKey,
+    addItem: (item) => state.meows.unshift(hydrateItem(item)),
+    commit: () => { persist(); render(); },
+    onStatus: (message) => { if (els.syncStatus) els.syncStatus.textContent = message; },
+    onAuth: (user) => {
+      els.accountButton.textContent = user ? "已登录 · 同步" : "登录同步";
+      els.authForm.hidden = Boolean(user);
+      els.authSigned.hidden = !user;
+      if (user) {
+        els.authIdentity.textContent = user.email || "已登录";
+        els.syncStatus.textContent = "账号已连接";
+      } else {
+        els.syncStatus.textContent = "还没有登录";
+      }
+    }
+  });
 }
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

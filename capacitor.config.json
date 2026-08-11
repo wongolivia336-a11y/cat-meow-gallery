@@ -1,0 +1,15 @@
+{
+  "appId": "gallery.meow.mobile",
+  "appName": "meow gallery",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#fdfcf9"
+    }
+  }
+}

@@ -39,6 +39,7 @@ let timerTickAt = Date.now();
 let timerPaused = false;
 let showtimeActive = false;
 let timerId = null;
+let petCorner = "bottom-left";
 
 function resetRestTimer(minutes = workMinutes) {
   remainingMs = minutes * 60 * 1000;
@@ -185,6 +186,20 @@ function buildTray() {
     {
       label: timerPaused ? "恢复提醒" : "暂停提醒",
       click: () => { timerPaused = !timerPaused; timerTickAt = Date.now(); buildTray(); }
+    },
+    {
+      label: "多米待在哪个角落",
+      submenu: [
+        ["左上", "top-left"], ["右上", "top-right"],
+        ["左下", "bottom-left"], ["右下", "bottom-right"]
+      ].map(([label, value]) => ({
+        label, type: "radio", checked: petCorner === value,
+        click: () => {
+          petCorner = value;
+          win?.webContents.send("pet:corner", value);
+          buildTray();
+        }
+      }))
     },
     { type: "separator" },
     {

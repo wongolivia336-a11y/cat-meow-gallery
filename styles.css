@@ -268,6 +268,22 @@ body.is-pet.is-control::after {
   box-shadow: 0 18px 60px rgba(68, 62, 55, 0.2);
 }
 
+.auth-dialog {
+  width: min(440px, calc(100vw - 28px));
+  border: 2px solid var(--ink);
+  border-radius: 24px 29px 21px 27px;
+  padding: 28px;
+  color: var(--ink);
+  background: #fdfcf9;
+}
+.auth-dialog::backdrop { background: rgba(68, 62, 55, 0.28); backdrop-filter: blur(3px); }
+.auth-dialog h2 { margin: 4px 0 10px; }
+.auth-dialog > p { color: var(--ink-soft); line-height: 1.6; }
+.auth-dialog form, .auth-signed { display: grid; gap: 14px; }
+.auth-dialog label { display: grid; gap: 6px; }
+.auth-dialog input { width: 100%; }
+.auth-dialog small { display: block; margin-top: 14px; color: var(--ink-soft); }
+
 .about-dialog::backdrop { background: rgba(68, 62, 55, 0.28); backdrop-filter: blur(3px); }
 .about-dialog::before {
   content: "";
@@ -286,9 +302,14 @@ body.is-pet.is-control::after {
 .about-steps b { display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid var(--ink); border-radius: 47% 53% 46% 54%; color: #fff; background: var(--pink); }
 .about-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .download-link { display: inline-flex; align-items: center; text-decoration: none; }
+.is-disabled { opacity: 0.48; cursor: not-allowed; }
 .about-dialog small { display: block; margin-top: 14px; color: var(--ink-soft); }
 
+body.is-native-app .download-link,
+body.is-native-app #installPwaButton { display: none; }
+
 body.is-pet .text-button { display: none; }
+body.is-pet.is-control .text-button { display: inline-block; }
 
 .app-bar h1 {
   margin: 0;

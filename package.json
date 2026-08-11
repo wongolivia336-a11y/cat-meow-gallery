@@ -1,21 +1,30 @@
 {
   "name": "meow-gallery",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "把猫叫存成会飘在桌面上的泡泡，戳破就能听见。",
   "main": "electron/main.js",
   "scripts": {
     "pet": "electron .",
     "web": "python devserver.py 8765",
-    "dist:win": "electron-builder --win nsis",
-    "dist:mac": "electron-builder --mac dmg --x64 --arm64"
+    "dist:win": "electron-builder --win nsis zip",
+    "dist:mac": "electron-builder --mac dmg --x64 --arm64",
+    "mobile:prepare": "node scripts/prepare-mobile.mjs",
+    "mobile:sync": "npm run mobile:prepare && cap sync",
+    "android:apk": "npm run mobile:sync && cd android && gradlew.bat assembleDebug",
+    "android:aab": "npm run mobile:sync && cd android && gradlew.bat bundleRelease"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.4.2",
     "electron": "^43.3.0",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "@fontsource/zcool-kuaile": "^5.3.0"
+    "@capacitor/android": "8.4.2",
+    "@capacitor/core": "8.4.2",
+    "@capacitor/ios": "8.4.2",
+    "@fontsource/zcool-kuaile": "^5.3.0",
+    "@supabase/supabase-js": "^2.112.2"
   },
   "build": {
     "appId": "gallery.meow.desktop",
@@ -29,6 +38,7 @@
       "app.js",
       "bubbles.js",
       "domi.js",
+      "cloud.js",
       "electron/**/*",
       "assets/**/*",
       "vendor/**/*",
@@ -36,9 +46,12 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis",
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "icon": "assets/domi-icon-512.png",
-      "artifactName": "meow-gallery-${version}-windows-${arch}.${ext}"
+      "artifactName": "meow-gallery-windows-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -50,7 +63,7 @@
       "target": "dmg",
       "icon": "assets/domi-icon-512.png",
       "category": "public.app-category.lifestyle",
-      "artifactName": "meow-gallery-${version}-mac-${arch}.${ext}"
+      "artifactName": "meow-gallery-mac-${arch}.${ext}"
     }
   }
 }

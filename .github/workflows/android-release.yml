@@ -1,0 +1,41 @@
+name: Android release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - run: npm run mobile:prepare
+      - run: npx cap sync android
+      - run: chmod +x android/gradlew
+      - working-directory: android
+        run: ./gradlew assembleDebug
+      - name: Name APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk meow-gallery-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: meow-gallery-android.apk
+      - name: Publish tagged APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: meow-gallery-android.apk

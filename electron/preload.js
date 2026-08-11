@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld("meowPet", {
     ipcRenderer.on("pet:showtime", () => handler());
   },
 
+  onPetCorner(handler) {
+    ipcRenderer.on("pet:corner", (_event, corner) => handler(String(corner)));
+  },
+
   showtimeDone() {
     ipcRenderer.send("pet:showtime-done");
   },

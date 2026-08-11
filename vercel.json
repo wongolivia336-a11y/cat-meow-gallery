@@ -5,6 +5,28 @@
   "outputDirectory": ".",
   "installCommand": "echo \"static site - no install needed\"",
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/downloads/windows",
+      "destination": "https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest/download/meow-gallery-windows-x64.zip",
+      "permanent": false
+    },
+    {
+      "source": "/downloads/mac-arm64",
+      "destination": "https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest/download/meow-gallery-mac-arm64.dmg",
+      "permanent": false
+    },
+    {
+      "source": "/downloads/mac-intel",
+      "destination": "https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest/download/meow-gallery-mac-x64.dmg",
+      "permanent": false
+    },
+    {
+      "source": "/downloads/android",
+      "destination": "https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest/download/meow-gallery-android.apk",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)\\.(js|css)",

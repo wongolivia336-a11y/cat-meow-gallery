@@ -18,6 +18,8 @@
   let side = 1;
   let spawned = 0;
   let done = null;
+  let corner = "bottom-left";
+  let controlMode = false;
 
   const sequence = [
     ["walk-in", 2500], ["settle", 900], ["blow", 3600],
@@ -42,6 +44,14 @@
     spawned = 0;
     done = onDone || null;
     return true;
+  }
+
+  function setCorner(next) {
+    if (["top-left", "top-right", "bottom-left", "bottom-right"].includes(next)) corner = next;
+  }
+
+  function setControlMode(on) {
+    controlMode = Boolean(on);
   }
 
   function makeSprite(name) {
@@ -174,7 +184,11 @@
   }
 
   function idlePosition(w, h) {
-    return { x: w - 68, y: h - 64 };
+    // 控制界面的录音按钮在右下角：打开控制界面时强制暂避到左下。
+    const active = controlMode ? "bottom-left" : corner;
+    const left = active.endsWith("left");
+    const top = active.startsWith("top");
+    return { x: left ? 82 : w - 82, y: top ? 82 : h - 82 };
   }
 
   function draw(ctx, now, w, h) {
@@ -261,5 +275,5 @@
   function mix(a, b, t) { return a + (b - a) * t; }
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
 
-  window.DomiPet = { init, startShowtime };
+  window.DomiPet = { init, startShowtime, setCorner, setControlMode };
 })();

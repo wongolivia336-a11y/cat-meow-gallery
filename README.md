@@ -34,33 +34,42 @@ meow gallery 是一只装着真实猫声的桌面宠物。多米平时在屏幕�
 
 ---
 
-## 三种使用形态
+## 三种产品形态
 
 | 形态 | 现在能做什么 | 安装方式 |
 |---|---|---|
-| 手机网页 / PWA | 录音、标记、保存声音泡泡 | 浏览器打开网页，选择“添加到主屏幕” |
-| Windows / macOS 桌宠 | 常驻角落、定时出场、托盘控制、戳泡泡听声音 | 从 GitHub Releases 下载安装包 |
-| 普通电脑网页 | 体验完整泡泡场和录音控制界面 | 直接打开网页，无需安装 |
+| 手机 App | 录音、整理、上传猫声，是主要采集端 | Android APK；iOS TestFlight / App Store |
+| 网页版 | 免安装体验、账号登录、查看声音泡泡 | 浏览器直接打开 |
+| 桌面桌宠 | 常驻桌面四角、定时出场、托盘控制、播放同步声音 | Windows 免安装 ZIP；macOS DMG |
 
-手机与电脑的账号登录、邮箱验证码和云同步是下一阶段能力；当前录音仍保存在本机浏览器或桌宠数据中。
+三端使用同一邮箱账号。Supabase Auth 负责邮箱验证码登录，私有 Storage 保存音频，Postgres + RLS
+保证每个用户只能读取自己的猫咪、录音、设备和桌宠设置。离线时仍先保存本地，联网后同步。
 
 ## 下载与安装
 
 ### 桌面版
 
-前往 [GitHub Releases](https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest) 下载：
+官网“关于 · 下载”提供站内下载入口：
 
-- Windows：`meow-gallery-*-windows-x64.exe`
-- macOS：`meow-gallery-*-mac-*.dmg`
+- Windows：`/downloads/windows`，免安装 ZIP
+- Apple Silicon Mac：`/downloads/mac-arm64`
+- Intel Mac：`/downloads/mac-intel`
+- Android：`/downloads/android`
 
 安装包由 `.github/workflows/desktop-release.yml` 构建：推送 `v*` 标签会自动生成 Windows 和 macOS 安装包并附加到 Release。
 
 当前测试版尚未购买 Windows/macOS 代码签名证书，系统可能显示“未知发布者”或 Gatekeeper 提示；
 正式公开分发前需要补齐签名和 notarization。
 
-### 手机版
+### 手机 App
 
-网页已经包含 Web App Manifest 和 Service Worker：
+`android/` 与 `ios/` 是 Capacitor 原生工程，共用现有录音和泡泡内核：
+
+- Android 可以由 GitHub Actions 生成可直接安装的 APK；正式上架使用签名 AAB；
+- iOS 工程已经生成，但 IPA/TestFlight 必须绑定 Apple Developer 账号、证书和 provisioning profile；
+- 原生工程均已声明麦克风用途，Android 配置 `RECORD_AUDIO`，iOS 配置 `NSMicrophoneUsageDescription`。
+
+网页版仍保留 PWA 作为免安装备用入口：
 
 - Android Chrome：打开“关于 · 下载”，点击“安装到手机”；
 - iPhone Safari：点击分享按钮，再选择“添加到主屏幕”；

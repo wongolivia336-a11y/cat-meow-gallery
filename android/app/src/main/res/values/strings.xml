@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">meow gallery</string>
+    <string name="title_activity_main">meow gallery</string>
+    <string name="package_name">gallery.meow.mobile</string>
+    <string name="custom_url_scheme">gallery.meow.mobile</string>
+</resources>

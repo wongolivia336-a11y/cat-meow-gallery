@@ -3,3 +3,9 @@ dist/
 server.log
 server.err.log
 .DS_Store
+www/
+android/.gradle/
+android/app/build/
+android/app/src/main/assets/public/
+ios/App/DerivedData/
+ios/App/App/public/

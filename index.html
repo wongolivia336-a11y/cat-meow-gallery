@@ -64,6 +64,7 @@
           aria-label 保留文字语义，图标本身对读屏器隐藏。
         -->
         <div class="app-bar-actions">
+          <button class="text-button" id="accountButton" type="button">登录同步</button>
           <button class="text-button" id="aboutButton" type="button">关于 · 下载</button>
           <button class="icon-button" id="searchToggle" type="button" aria-expanded="false" aria-controls="filterPanel" aria-label="搜索和筛选">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -193,18 +194,42 @@
         <span><b>3</b> 到点戳泡泡休息</span>
       </div>
       <div class="about-actions">
-        <a class="primary-button download-link" href="https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest" target="_blank" rel="noreferrer">下载 Windows 桌宠</a>
+        <a class="primary-button download-link" href="/downloads/windows">下载 Windows 免安装版</a>
+        <a class="ghost-button download-link" href="/downloads/mac-arm64">Mac · Apple 芯片</a>
+        <a class="ghost-button download-link" href="/downloads/mac-intel">Mac · Intel</a>
+        <a class="ghost-button download-link" href="/downloads/android">下载 Android APK</a>
+        <span class="ghost-button is-disabled" aria-disabled="true">iPhone · TestFlight 待签名</span>
         <button class="ghost-button" id="installPwaButton" type="button" hidden>安装到手机</button>
       </div>
-      <small>桌面安装包由 GitHub Releases 提供；手机版可直接安装当前网页。</small>
+      <small>Windows 为免安装 ZIP；Android 可直接安装 APK；iPhone 需要 Apple Developer 签名后通过 TestFlight 安装。</small>
+    </dialog>
+
+    <dialog class="auth-dialog" id="authDialog">
+      <button class="dialog-close" id="authClose" type="button" aria-label="关闭登录">×</button>
+      <p class="eyebrow">Private cloud</p>
+      <h2>让手机和电脑认识同一只多米</h2>
+      <p>使用邮箱验证码登录。录音默认私有，只有你的设备可以读取。</p>
+      <form id="authForm">
+        <label>邮箱<input id="authEmail" name="email" type="email" autocomplete="email" required placeholder="you@example.com" /></label>
+        <label id="otpLabel" hidden>邮箱验证码<input id="authOtp" name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="输入邮件里的验证码" /></label>
+        <button class="primary-button" id="authSubmit" type="submit">发送验证码</button>
+      </form>
+      <div class="auth-signed" id="authSigned" hidden>
+        <p id="authIdentity"></p>
+        <button class="primary-button" id="syncNowButton" type="button">立即同步</button>
+        <button class="ghost-button" id="signOutButton" type="button">退出账号</button>
+      </div>
+      <small id="syncStatus" role="status">还没有登录</small>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="vendor/matter.min.js"></script>
     <script src="vendor/rough.js"></script>
+    <script src="vendor/supabase.js"></script>
     <script src="bubbles.js?v=21"></script>
     <script src="domi.js?v=1"></script>
+    <script src="cloud.js?v=1"></script>
     <script src="app.js?v=21"></script>
   </body>
 </html>
