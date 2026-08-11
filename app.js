@@ -80,6 +80,8 @@ const state = {
   restTimer: null,
   isResting: false,
   controlMode: false,
+  petAutoClearMinutes: 5,
+  petClearTimer: null,
   mode: null // "capture"（手机，工具）或 "ambient"（电脑，屏保）
 };
 let deferredInstallPrompt = null;
@@ -105,7 +107,8 @@ function init() {
     // 破裂动画结束、泡泡重新飘回来时，把播放次数落盘
     onPopEnd: () => persist(),
     // 长按收藏
-    onLongPress: (item) => toggleFavorite(item)
+    onLongPress: (item) => toggleFavorite(item),
+    onEmpty: () => window.clearTimeout(state.petClearTimer)
   });
 
   setupDesktopPet();
@@ -261,6 +264,7 @@ function bindEvents() {
 function setupDesktopPet() {
   if (!window.meowPet?.isPet) return;
   els.body.classList.add("is-pet");
+  BubbleField.setPetRitual(true);
   window.DomiPet?.init({ getItems: () => state.meows });
 
   let lastX = -1;
@@ -269,7 +273,7 @@ function setupDesktopPet() {
 
   const evaluate = () => {
     if (state.controlMode || lastX < 0) return;
-    const over = BubbleField.hitTestAt(lastX, lastY);
+    const over = BubbleField.hitTestAt(lastX, lastY) || window.DomiPet?.hitTestAt(lastX, lastY);
     if (over === interactive) return;
     interactive = over;
     window.meowPet.setInteractive(over);
@@ -302,10 +306,32 @@ function setupDesktopPet() {
   });
 
   window.meowPet.onShowtime(() => {
-    window.DomiPet?.startShowtime(() => window.meowPet.showtimeDone());
+    window.clearTimeout(state.petClearTimer);
+    window.DomiPet?.startShowtime(() => {
+      window.meowPet.showtimeDone();
+      if (state.petAutoClearMinutes > 0) {
+        state.petClearTimer = window.setTimeout(
+          () => BubbleField.clearAll(false),
+          state.petAutoClearMinutes * 60 * 1000
+        );
+      }
+    });
   });
 
   window.meowPet.onPetCorner?.((corner) => window.DomiPet?.setCorner(corner));
+  window.meowPet.onAutoClear?.((minutes) => {
+    state.petAutoClearMinutes = Math.max(0, Number(minutes) || 0);
+  });
+  window.meowPet.onClearBubbles?.(() => {
+    window.clearTimeout(state.petClearTimer);
+    BubbleField.clearAll(false);
+  });
+
+  window.addEventListener("contextmenu", (event) => {
+    if (!window.DomiPet?.hitTestAt(event.clientX, event.clientY)) return;
+    event.preventDefault();
+    window.meowPet.openPetMenu?.();
+  });
 
   // 控制界面里按 Esc 退回穿透状态，不用每次都去点托盘
   window.addEventListener("keydown", (event) => {

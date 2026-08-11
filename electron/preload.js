@@ -29,6 +29,18 @@ contextBridge.exposeInMainWorld("meowPet", {
     ipcRenderer.on("pet:corner", (_event, corner) => handler(String(corner)));
   },
 
+  onAutoClear(handler) {
+    ipcRenderer.on("pet:auto-clear", (_event, minutes) => handler(Number(minutes)));
+  },
+
+  onClearBubbles(handler) {
+    ipcRenderer.on("pet:clear-bubbles", () => handler());
+  },
+
+  openPetMenu() {
+    ipcRenderer.send("pet:open-menu");
+  },
+
   showtimeDone() {
     ipcRenderer.send("pet:showtime-done");
   },

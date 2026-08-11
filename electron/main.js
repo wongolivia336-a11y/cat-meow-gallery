@@ -40,6 +40,7 @@ let timerPaused = false;
 let showtimeActive = false;
 let timerId = null;
 let petCorner = "bottom-left";
+let autoClearMinutes = 5;
 
 function resetRestTimer(minutes = workMinutes) {
   remainingMs = minutes * 60 * 1000;
@@ -161,8 +162,8 @@ function loadTrayIcon() {
   return canvas.isEmpty() ? nativeImage.createEmpty() : canvas;
 }
 
-function buildTray() {
-  const menu = Menu.buildFromTemplate([
+function menuTemplate() {
+  return [
     { label: remainingLabel(), enabled: false },
     { type: "separator" },
     { label: "现在休息", enabled: !showtimeActive, click: triggerShowtime },
@@ -201,6 +202,29 @@ function buildTray() {
         }
       }))
     },
+    {
+      label: "泡泡自动清屏",
+      submenu: [
+        ["仅手动清屏", 0], ["2 分钟", 2], ["5 分钟", 5], ["10 分钟", 10]
+      ].map(([label, minutes]) => ({
+        label, type: "radio", checked: autoClearMinutes === minutes,
+        click: () => {
+          autoClearMinutes = minutes;
+          win?.webContents.send("pet:auto-clear", minutes);
+          buildTray();
+        }
+      }))
+    },
+    {
+      label: "立即清屏",
+      click: () => win?.webContents.send("pet:clear-bubbles")
+    },
+    {
+      label: "开机自动启动",
+      type: "checkbox",
+      checked: app.getLoginItemSettings().openAtLogin,
+      click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked })
+    },
     { type: "separator" },
     {
       label: controlMode ? "✓ 控制界面" : "打开控制界面",
@@ -208,7 +232,11 @@ function buildTray() {
     },
     { type: "separator" },
     { label: "退出 meow gallery", click: () => app.quit() }
-  ]);
+  ];
+}
+
+function buildTray() {
+  const menu = Menu.buildFromTemplate(menuTemplate());
 
   if (!tray) {
     tray = new Tray(loadTrayIcon());
@@ -251,6 +279,7 @@ ipcMain.on("pet:interactive", (event, on) => {
 
 ipcMain.on("pet:exit-control", () => setControlMode(false));
 ipcMain.on("pet:showtime-done", () => resetRestTimer());
+ipcMain.on("pet:open-menu", () => Menu.buildFromTemplate(menuTemplate()).popup({ window: win }));
 
 // 桌宠没有任务栏图标，关掉最后一个窗口不等于退出 —— 退出走托盘菜单
 app.on("window-all-closed", () => {

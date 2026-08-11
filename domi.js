@@ -18,6 +18,7 @@
   let side = 1;
   let spawned = 0;
   let done = null;
+  let showtimeTarget = 0;
   let corner = "bottom-left";
   let controlMode = false;
 
@@ -42,6 +43,10 @@
     phaseStarted = performance.now();
     side = Math.random() < 0.5 ? -1 : 1;
     spawned = 0;
+    const items = getItems().filter((item) => item.audioUrl || item.audioKey);
+    showtimeTarget = window.BubbleField?.ritualTargetCount(items.length) || 0;
+    window.BubbleField?.clearAll(true);
+    sequence[2][1] = Math.max(3600, showtimeTarget * 620);
     done = onDone || null;
     return true;
   }
@@ -204,6 +209,12 @@
     paint(ctx, pose, p.x, p.y, 0.46 * breath, 1);
   }
 
+  function hitTestAt(x, y) {
+    const p = idlePosition(window.innerWidth, window.innerHeight);
+    const radius = mode === "idle" ? 72 : 115;
+    return Math.hypot(x - p.x, y - p.y) <= radius;
+  }
+
   function drawShowtime(ctx, now, w, h) {
     const entry = side < 0 ? -110 : w + 110;
     const stage = side < 0 ? w * 0.32 : w * 0.68;
@@ -222,7 +233,7 @@
     } else if (mode === "blow") {
       const beat = (elapsed % 900) / 900;
       pose = beat < 0.48 ? "puff" : "blow";
-      const wanted = Math.min(4, Math.floor(elapsed / 900) + 1);
+      const wanted = Math.min(showtimeTarget, Math.floor(elapsed / 620) + 1);
       const items = getItems().filter((item) => item.audioUrl || item.audioKey);
       while (spawned < wanted && items.length) {
         const item = items[spawned % items.length];
@@ -275,5 +286,5 @@
   function mix(a, b, t) { return a + (b - a) * t; }
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
 
-  window.DomiPet = { init, startShowtime, setCorner, setControlMode };
+  window.DomiPet = { init, startShowtime, setCorner, setControlMode, hitTestAt };
 })();

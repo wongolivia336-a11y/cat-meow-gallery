@@ -49,6 +49,7 @@
   let coverage = 0.46;         // 目标覆盖率，采集端会调低
   let recordSeed = 1;
   let rafId = null;
+  let petRitual = false;
 
   /* ------------------------------------------------------------------
      初始化
@@ -61,7 +62,8 @@
     handlers = {
       onPop: options.onPop || function () {},
       onPopEnd: options.onPopEnd || function () {},
-      onLongPress: options.onLongPress || function () {}
+      onLongPress: options.onLongPress || function () {},
+      onEmpty: options.onEmpty || function () {}
     };
 
     engine = Engine.create();
@@ -539,6 +541,7 @@
 
   function setItems(items) {
     lastItems = items;
+    if (petRitual) return;
     // 先算出这块屏幕需要多少颗泡泡，再把它们轮流分配给现有的录音
     const total = targetCount(items.length);
     const wanted = new Map();
@@ -627,6 +630,25 @@
     return bubbles[bubbles.length - 1] || null;
   }
 
+  function setPetRitual(on) {
+    petRitual = Boolean(on);
+    if (petRitual) clearAll(true);
+    else if (lastItems) setItems(lastItems);
+  }
+
+  function ritualTargetCount(itemCount) {
+    return targetCount(itemCount);
+  }
+
+  function clearAll(immediate = false) {
+    for (const b of bubbles) {
+      if (immediate) Composite.remove(engine.world, b.body);
+      else b.target = 0;
+    }
+    if (immediate) bubbles = [];
+    pops = [];
+  }
+
   // 贴图只依赖这几个"画得出来"的字段。标题不再上贴图，所以不进 key
   function spriteKey(item, instance) {
     return instance === 0 ? `${item.favorite}|${item.mood}` : `${item.favorite}`;
@@ -706,7 +728,7 @@
   function pop(b) {
     b.state = "popped";
     b.popAt = performance.now();
-    b.respawnAt = b.popAt + RESPAWN_DELAY;
+    b.respawnAt = petRitual ? Number.POSITIVE_INFINITY : b.popAt + RESPAWN_DELAY;
     Composite.remove(engine.world, b.body);
 
     pops.push({
@@ -724,6 +746,7 @@
     });
 
     handlers.onPop(b.item);
+    if (petRitual && !bubbles.some((item) => item.state === "alive")) handlers.onEmpty();
   }
 
   /* ------------------------------------------------------------------
@@ -948,6 +971,6 @@
 
   window.BubbleField = {
     init, setItems, setRecording, setMode, setMoods, spawnAt, setOverlayDraw,
-    hitTestAt, faceDataUrl, destroy, TUNING
+    hitTestAt, faceDataUrl, destroy, setPetRitual, ritualTargetCount, clearAll, TUNING
   };
 })();
