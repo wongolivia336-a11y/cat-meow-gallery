@@ -7,7 +7,7 @@ meow gallery 是一只装着真实猫声的桌面宠物。多米平时在屏幕�
 
 它不是音频管理器，也不是催你打卡的番茄钟，而是一个可以被忽略、也值得偶尔停下来的休息仪式。
 
-[打开网页版](https://bioaz-agent-workbench.vercel.app/) ·
+[打开网页版](https://domi-meow-gallery.vercel.app/) ·
 [下载桌面版](https://github.com/wongolivia336-a11y/cat-meow-gallery/releases/latest) ·
 [查看 Releases](https://github.com/wongolivia336-a11y/cat-meow-gallery/releases)
 
@@ -44,6 +44,10 @@ meow gallery 是一只装着真实猫声的桌面宠物。多米平时在屏幕�
 
 三端使用同一邮箱账号。Supabase Auth 负责邮箱验证码登录，私有 Storage 保存音频，Postgres + RLS
 保证每个用户只能读取自己的猫咪、录音、设备和桌宠设置。离线时仍先保存本地，联网后同步。
+
+Supabase Auth 的 `Site URL` 与 Redirect URL allow list 都必须包含
+`https://domi-meow-gallery.vercel.app/`。Magic Link 模板若希望发送 6 位验证码而不是确认链接，
+应使用 `{{ .Token }}`，客户端会用 `verifyOtp` 完成登录。
 
 ## 下载与安装
 

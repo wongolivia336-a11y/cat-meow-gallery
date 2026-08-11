@@ -46,7 +46,7 @@
     const items = getItems().filter((item) => item.audioUrl || item.audioKey);
     showtimeTarget = window.BubbleField?.ritualTargetCount(items.length) || 0;
     window.BubbleField?.clearAll(true);
-    sequence[2][1] = Math.max(3600, showtimeTarget * 620);
+    sequence[2][1] = Math.max(4200, showtimeTarget * 420);
     done = onDone || null;
     return true;
   }
@@ -78,6 +78,7 @@
   function drawCat(c, pose) {
     const walking = pose.startsWith("walk");
     const sitting = ["sit", "puff", "blow"].includes(pose);
+    const holdingWand = pose === "puff" || pose === "blow";
     c.save();
     c.translate(0, walking ? 12 : 22);
 
@@ -105,7 +106,16 @@
     // 爪：走路帧故意不对称。
     c.strokeStyle = INK; c.lineWidth = 8; c.fillStyle = "#fdfcf9";
     const lift = pose === "walk-2" ? -12 : 0;
-    paw(c, -38, 106 + lift); paw(c, 31, 106 - lift);
+    paw(c, -38, 106 + lift);
+    if (holdingWand) {
+      c.save();
+      c.translate(43, 48);
+      c.rotate(-0.42);
+      paw(c, 0, 0);
+      c.restore();
+    } else {
+      paw(c, 31, 106 - lift);
+    }
 
     // 圆脸。
     c.fillStyle = SILVER;
@@ -155,11 +165,16 @@
     }
     c.stroke();
 
-    if (pose === "blow") {
+    if (holdingWand) {
       c.strokeStyle = INK; c.lineWidth = 5;
-      c.beginPath(); c.moveTo(20, 21); c.lineTo(54, 18); c.stroke();
+      c.beginPath(); c.moveTo(49, 54); c.lineTo(62, 6); c.stroke();
       c.strokeStyle = PINK; c.lineWidth = 7;
-      c.beginPath(); c.arc(68, 18, 13, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.arc(65, -5, 14, 0, Math.PI * 2); c.stroke();
+    }
+    if (pose === "blow") {
+      c.strokeStyle = "rgba(68,62,55,.55)"; c.lineWidth = 3;
+      c.beginPath(); c.arc(39, 9, 13, -0.7, 0.55); c.stroke();
+      c.beginPath(); c.arc(47, 4, 17, -0.6, 0.42); c.stroke();
     }
     c.restore();
   }
@@ -233,14 +248,17 @@
     } else if (mode === "blow") {
       const beat = (elapsed % 900) / 900;
       pose = beat < 0.48 ? "puff" : "blow";
-      const wanted = Math.min(showtimeTarget, Math.floor(elapsed / 620) + 1);
+      const wanted = Math.min(showtimeTarget, Math.floor(elapsed / 420) + 1);
       const items = getItems().filter((item) => item.audioUrl || item.audioKey);
       while (spawned < wanted && items.length) {
         const item = items[spawned % items.length];
         const mouthX = x + (side < 0 ? 74 : -74);
-        window.BubbleField.spawnAt(item, mouthX, floor - 68, {
-          x: side < 0 ? 1.8 + spawned * 0.16 : -1.8 - spawned * 0.16,
-          y: -1.5 - spawned * 0.18
+        window.BubbleField.spawnAt(item, mouthX, floor - 96, {
+          velocity: {
+            x: side < 0 ? 1.8 + spawned * 0.035 : -1.8 - spawned * 0.035,
+            y: -1.5 - spawned * 0.035
+          },
+          radiusScale: 1.3
         });
         spawned += 1;
       }

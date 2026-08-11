@@ -581,6 +581,7 @@
 
   function spawn(item, instance, atEdge, placement) {
     const t = traitsOf(item, instance);
+    if (placement?.radiusScale) t.radius *= placement.radiusScale;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     const x = placement?.x ?? (atEdge ? (Math.random() < 0.5 ? t.radius + 4 : w - t.radius - 4) : rand(t.radius, w - t.radius));
@@ -619,13 +620,14 @@
   }
 
   /* 多米吹泡泡时从嘴边定点生成。instance 使用独立序号，避免覆盖密度泡泡。 */
-  function spawnAt(item, x, y, velocity) {
+  function spawnAt(item, x, y, options) {
     if (!item || !engine) return null;
     const instance = 10000 + Math.floor(performance.now());
     spawn(item, instance, false, {
       x: clamp(x, 24, canvas.clientWidth - 24),
       y: clamp(y, 24, canvas.clientHeight - 24),
-      velocity: velocity || { x: 1.4, y: -1.2 }
+      velocity: options?.velocity || options || { x: 1.4, y: -1.2 },
+      radiusScale: options?.radiusScale || 1
     });
     return bubbles[bubbles.length - 1] || null;
   }
@@ -637,7 +639,10 @@
   }
 
   function ritualTargetCount(itemCount) {
-    return targetCount(itemCount);
+    if (!itemCount) return 0;
+    const area = window.innerWidth * window.innerHeight;
+    // 仪式需要形成一整屏泡泡墙；碰撞后的自然空隙仍会透出桌面。
+    return clamp(Math.ceil((area * 0.72) / (Math.PI * 78 * 78)), 28, 84);
   }
 
   function clearAll(immediate = false) {

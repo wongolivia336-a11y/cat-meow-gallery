@@ -3,6 +3,7 @@
 
   const SUPABASE_URL = "https://gyukalzptskonblxgzca.supabase.co";
   const SUPABASE_KEY = "sb_publishable_j5ssxRZdq4XIqJ1pfFqHAg_gCUGo0gP";
+  const WEB_AUTH_RETURN_URL = "https://domi-meow-gallery.vercel.app/";
   const client = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
   });
@@ -26,10 +27,9 @@
 
   async function sendOtp(email) {
     if (!client) throw new Error("同步服务没有加载");
-    const redirectTo = location.protocol.startsWith("http") ? location.origin : undefined;
     const { error } = await client.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true, emailRedirectTo: redirectTo }
+      options: { shouldCreateUser: true, emailRedirectTo: WEB_AUTH_RETURN_URL }
     });
     if (error) throw error;
   }
