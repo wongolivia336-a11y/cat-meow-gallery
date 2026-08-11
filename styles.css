@@ -893,3 +893,6 @@ button:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+.language-toggle {
+  min-width: 3.2rem;
+}

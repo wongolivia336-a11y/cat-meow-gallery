@@ -10,7 +10,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="assets/domi-icon-192.png" />
     <link rel="apple-touch-icon" href="assets/domi-icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=21" />
+    <link rel="stylesheet" href="styles.css?v=22" />
   </head>
   <body>
     <!--
@@ -64,6 +64,7 @@
           aria-label 保留文字语义，图标本身对读屏器隐藏。
         -->
         <div class="app-bar-actions">
+          <button class="text-button language-toggle" id="languageToggle" type="button" aria-label="Switch language">EN</button>
           <button class="text-button" id="accountButton" type="button">登录同步</button>
           <button class="text-button" id="aboutButton" type="button">关于 · 下载</button>
           <button class="icon-button" id="searchToggle" type="button" aria-expanded="false" aria-controls="filterPanel" aria-label="搜索和筛选">
@@ -227,9 +228,10 @@
     <script src="vendor/matter.min.js"></script>
     <script src="vendor/rough.js"></script>
     <script src="vendor/supabase.js"></script>
+    <script src="i18n.js?v=1"></script>
     <script src="bubbles.js?v=24"></script>
-    <script src="domi.js?v=4"></script>
-    <script src="cloud.js?v=2"></script>
-    <script src="app.js?v=24"></script>
+    <script src="domi.js?v=5"></script>
+    <script src="cloud.js?v=3"></script>
+    <script src="app.js?v=25"></script>
   </body>
 </html>

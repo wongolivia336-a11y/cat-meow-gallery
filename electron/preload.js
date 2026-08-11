@@ -37,6 +37,14 @@ contextBridge.exposeInMainWorld("meowPet", {
     ipcRenderer.on("pet:clear-bubbles", () => handler());
   },
 
+  onLanguage(handler) {
+    ipcRenderer.on("pet:language", (_event, language) => handler(String(language)));
+  },
+
+  setLanguage(language) {
+    ipcRenderer.send("pet:set-language", language === "zh" ? "zh" : "en");
+  },
+
   openPetMenu() {
     ipcRenderer.send("pet:open-menu");
   },

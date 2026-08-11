@@ -41,6 +41,11 @@ let showtimeActive = false;
 let timerId = null;
 let petCorner = "bottom-left";
 let autoClearMinutes = 5;
+let language = "zh";
+
+function tr(zh, en) {
+  return language === "zh" ? zh : en;
+}
 
 function resetRestTimer(minutes = workMinutes) {
   remainingMs = minutes * 60 * 1000;
@@ -68,10 +73,10 @@ function tickRestTimer() {
 }
 
 function remainingLabel() {
-  if (showtimeActive) return "休息仪式进行中";
-  if (timerPaused) return "提醒已暂停";
+  if (showtimeActive) return tr("休息仪式进行中", "Break ritual in progress");
+  if (timerPaused) return tr("提醒已暂停", "Reminders paused");
   const minutes = Math.max(1, Math.ceil(remainingMs / 60000));
-  return `下次休息：${minutes} 分钟后`;
+  return tr(`下次休息：${minutes} 分钟后`, `Next break in ${minutes} min`);
 }
 
 function serveAppProtocol() {
@@ -166,9 +171,9 @@ function menuTemplate() {
   return [
     { label: remainingLabel(), enabled: false },
     { type: "separator" },
-    { label: "现在休息", enabled: !showtimeActive, click: triggerShowtime },
+    { label: tr("现在休息", "Take a break now"), enabled: !showtimeActive, click: triggerShowtime },
     {
-      label: "推迟 5 分钟",
+      label: tr("推迟 5 分钟", "Snooze 5 minutes"),
       click: () => {
         remainingMs = Math.max(remainingMs, 0) + 5 * 60 * 1000;
         showtimeActive = false;
@@ -176,25 +181,25 @@ function menuTemplate() {
         buildTray();
       }
     },
-    { label: "跳过这次", click: () => resetRestTimer() },
+    { label: tr("跳过这次", "Skip this break"), click: () => resetRestTimer() },
     {
-      label: "工作时长",
+      label: tr("工作时长", "Work interval"),
       submenu: WORK_MINUTES.map((minutes) => ({
-        label: `${minutes} 分钟`, type: "radio", checked: workMinutes === minutes,
+        label: tr(`${minutes} 分钟`, `${minutes} minutes`), type: "radio", checked: workMinutes === minutes,
         click: () => { workMinutes = minutes; resetRestTimer(minutes); }
       }))
     },
     {
-      label: timerPaused ? "恢复提醒" : "暂停提醒",
+      label: timerPaused ? tr("恢复提醒", "Resume reminders") : tr("暂停提醒", "Pause reminders"),
       click: () => { timerPaused = !timerPaused; timerTickAt = Date.now(); buildTray(); }
     },
     {
-      label: "多米待在哪个角落",
+      label: tr("多米待在哪个角落", "Domi's corner"),
       submenu: [
         ["左上", "top-left"], ["右上", "top-right"],
         ["左下", "bottom-left"], ["右下", "bottom-right"]
-      ].map(([label, value]) => ({
-        label, type: "radio", checked: petCorner === value,
+      ].map(([label, value], index) => ({
+        label: language === "zh" ? label : ["Top left", "Top right", "Bottom left", "Bottom right"][index], type: "radio", checked: petCorner === value,
         click: () => {
           petCorner = value;
           win?.webContents.send("pet:corner", value);
@@ -203,11 +208,11 @@ function menuTemplate() {
       }))
     },
     {
-      label: "泡泡自动清屏",
+      label: tr("泡泡自动清屏", "Auto-clear bubbles"),
       submenu: [
         ["仅手动清屏", 0], ["2 分钟", 2], ["5 分钟", 5], ["10 分钟", 10]
-      ].map(([label, minutes]) => ({
-        label, type: "radio", checked: autoClearMinutes === minutes,
+      ].map(([label, minutes], index) => ({
+        label: language === "zh" ? label : ["Manual only", "2 minutes", "5 minutes", "10 minutes"][index], type: "radio", checked: autoClearMinutes === minutes,
         click: () => {
           autoClearMinutes = minutes;
           win?.webContents.send("pet:auto-clear", minutes);
@@ -216,22 +221,29 @@ function menuTemplate() {
       }))
     },
     {
-      label: "立即清屏",
+      label: tr("立即清屏", "Clear bubbles now"),
       click: () => win?.webContents.send("pet:clear-bubbles")
     },
     {
-      label: "开机自动启动",
+      label: tr("开机自动启动", "Launch at startup"),
       type: "checkbox",
       checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked })
     },
     { type: "separator" },
     {
-      label: controlMode ? "✓ 控制界面" : "打开控制界面",
+      label: controlMode ? tr("✓ 控制界面", "✓ Control panel") : tr("打开控制界面", "Open control panel"),
       click: () => setControlMode(!controlMode)
     },
     { type: "separator" },
-    { label: "退出 meow gallery", click: () => app.quit() }
+    {
+      label: tr("语言", "Language"),
+      submenu: [
+        { label: "中文", type: "radio", checked: language === "zh", click: () => setLanguage("zh") },
+        { label: "English", type: "radio", checked: language === "en", click: () => setLanguage("en") }
+      ]
+    },
+    { label: tr("退出 meow gallery", "Quit meow gallery"), click: () => app.quit() }
   ];
 }
 
@@ -247,6 +259,7 @@ function buildTray() {
 }
 
 app.whenReady().then(() => {
+  language = app.getLocale().toLowerCase().startsWith("zh") ? "zh" : "en";
   serveAppProtocol();
 
   // 没有这个处理器，渲染进程请求麦克风时会一直挂着不返回
@@ -280,6 +293,13 @@ ipcMain.on("pet:interactive", (event, on) => {
 ipcMain.on("pet:exit-control", () => setControlMode(false));
 ipcMain.on("pet:showtime-done", () => resetRestTimer());
 ipcMain.on("pet:open-menu", () => Menu.buildFromTemplate(menuTemplate()).popup({ window: win }));
+ipcMain.on("pet:set-language", (_event, nextLanguage) => setLanguage(nextLanguage));
+
+function setLanguage(nextLanguage) {
+  language = nextLanguage === "zh" ? "zh" : "en";
+  win?.webContents.send("pet:language", language);
+  buildTray();
+}
 
 // 桌宠没有任务栏图标，关掉最后一个窗口不等于退出 —— 退出走托盘菜单
 app.on("window-all-closed", () => {

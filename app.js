@@ -14,6 +14,7 @@ const AUDIO_DB_NAME = "cat-mew-gallery-audio";
 const AUDIO_DB_VERSION = 1;
 const AUDIO_STORE_NAME = "audioBlobs";
 const AUDIO_KEY_PREFIX = "audio:";
+const t = (key, variables) => window.I18n?.t(key, variables) || key;
 const RECORDER_MIME_TYPES = [
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -22,18 +23,18 @@ const RECORDER_MIME_TYPES = [
 ];
 
 const MOODS = [
-  { id: "all", label: "全部", color: "#fffdf9", hue: 34 },
-  { id: "sweet", label: "meow 撒娇", color: "#ffe1e8", hue: 338 },
-  { id: "food", label: "饭盆通知", color: "#ffe7a3", hue: 46 },
-  { id: "sleepy", label: "困困慢叫", color: "#dce7ff", hue: 220 },
-  { id: "purr", label: "purr 呼噜", color: "#d5f0e9", hue: 166 },
-  { id: "mystery", label: "mrrp / chirp", color: "#e4f3d7", hue: 105 },
-  { id: "protest", label: "奶声抗议", color: "#ffd7c8", hue: 15 }
+  { id: "all", labelKey: "moodAll", color: "#fffdf9", hue: 34 },
+  { id: "sweet", labelKey: "moodSweet", color: "#ffe1e8", hue: 338 },
+  { id: "food", labelKey: "moodFood", color: "#ffe7a3", hue: 46 },
+  { id: "sleepy", labelKey: "moodNight", color: "#dce7ff", hue: 220 },
+  { id: "purr", labelKey: "moodPurr", color: "#d5f0e9", hue: 166 },
+  { id: "mystery", labelKey: "moodQuestion", color: "#e4f3d7", hue: 105 },
+  { id: "protest", labelKey: "moodAngry", color: "#ffd7c8", hue: 15 }
 ];
 
 const SORTS = [
-  { value: "newest", label: "刚吹出的" },
-  { value: "popular", label: "最常戳的" }
+  { value: "newest", labelKey: "sortNewest" },
+  { value: "popular", labelKey: "sortPopular" }
 ];
 
 const TITLE_POOL = [
@@ -98,6 +99,7 @@ function init() {
   renderMoodChips();
   setupDropdowns();
   bindEvents();
+  window.meowPet?.setLanguage?.(window.I18n?.language);
 
   BubbleField.init(els.canvas, {
     moods: allMoods(),
@@ -119,6 +121,7 @@ function init() {
 
 function cacheElements() {
   els.body = document.body;
+  els.languageToggle = document.querySelector("#languageToggle");
   els.canvas = document.querySelector("#bubbleCanvas");
   els.srMirror = document.querySelector("#srMirror");
   els.collectionCount = document.querySelector("#collectionCount");
@@ -167,6 +170,12 @@ function cacheElements() {
 }
 
 function bindEvents() {
+  els.languageToggle?.addEventListener("click", () => {
+    window.I18n?.toggle();
+    window.meowPet?.setLanguage?.(window.I18n?.language);
+  });
+  window.addEventListener("meow:language-change", refreshLanguage);
+  window.meowPet?.onLanguage?.((language) => window.I18n?.setLanguage(language));
   els.accountButton?.addEventListener("click", () => els.authDialog?.showModal());
   els.authClose?.addEventListener("click", () => els.authDialog?.close());
   els.authForm?.addEventListener("submit", handleAuthSubmit);
@@ -252,7 +261,7 @@ function bindEvents() {
   els.discardDraft.addEventListener("click", () => {
     state.draft = null;
     els.saveDialog.close();
-    showToast("先放回空气里。");
+    showToast(t("toastDiscard"));
   });
 }
 
@@ -269,6 +278,7 @@ function setupDesktopPet() {
   let lastX = -1;
   let lastY = -1;
   let interactive = false;
+  let draggingPet = false;
 
   const evaluate = () => {
     if (state.controlMode || lastX < 0) return;
@@ -281,8 +291,21 @@ function setupDesktopPet() {
   window.addEventListener("mousemove", (event) => {
     lastX = event.clientX;
     lastY = event.clientY;
+    if (draggingPet) window.DomiPet?.dragTo(lastX, lastY);
     evaluate();
   }, { passive: true });
+
+  window.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !window.DomiPet?.beginDrag(event.clientX, event.clientY)) return;
+    draggingPet = true;
+    event.preventDefault();
+  });
+
+  window.addEventListener("pointerup", () => {
+    if (!draggingPet) return;
+    draggingPet = false;
+    window.DomiPet?.endDrag();
+  });
 
   /*
     ⚠️ 光有 mousemove 是不够的。
@@ -440,8 +463,8 @@ async function startRecording() {
       recorderFailed = true;
       stopRecordingStream();
       state.mediaRecorder = null;
-      setRecordingState(false, "安静等待中");
-      failRecording("录音中断了，请重新录制；这次不会生成空泡泡。");
+      setRecordingState(false, t("recordQuiet"));
+      failRecording(t("recordInterrupted"));
     });
 
     state.mediaRecorder.addEventListener("stop", async () => {
@@ -453,7 +476,7 @@ async function startRecording() {
       state.mediaRecorder = null;
 
       if (!blob.size) {
-        failRecording("这次没有录到声音，请重新试一次。");
+        failRecording(t("recordEmpty"));
         return;
       }
 
@@ -475,11 +498,11 @@ async function startRecording() {
 
     startLiveAnalyser(stream);
     state.mediaRecorder.start(250);
-    setRecordingState(true, "泡泡正在变大");
+    setRecordingState(true, t("recordGrowing"));
   } catch (error) {
     stopRecordingStream();
     state.mediaRecorder = null;
-    failRecording("麦克风没有打开，请授权后重新录制。");
+    failRecording(t("recordMicDenied"));
   }
 }
 
@@ -492,14 +515,14 @@ function stopRecording() {
     stopRecordingStream();
   }
 
-  setRecordingState(false, "泡泡纸还没沾水");
+  setRecordingState(false, t("recordDry"));
 }
 
 function failRecording(message) {
   stopRecordingStream();
   state.mediaRecorder = null;
   state.chunks = [];
-  setRecordingState(false, "泡泡纸还没沾水");
+  setRecordingState(false, t("recordDry"));
   showToast(message);
 }
 
@@ -640,11 +663,11 @@ function pumpRecordingVisual() {
   state.liveRaf = requestAnimationFrame(pumpRecordingVisual);
 }
 
-function setRecordingState(isRecording, label) {
+function setRecordingState(isRecording, label = t("recordDry")) {
   state.isRecording = isRecording;
   els.recordButton.setAttribute("aria-pressed", String(isRecording));
-  els.recordButton.setAttribute("aria-label", isRecording ? "封口这颗泡泡" : "开始吹猫声泡泡");
-  els.recordButtonText.textContent = isRecording ? "封口" : "吹泡泡";
+  els.recordButton.setAttribute("aria-label", t(isRecording ? "recordStopAria" : "recordStartAria"));
+  els.recordButtonText.textContent = t(isRecording ? "recordStop" : "recordStart");
   els.recordState.textContent = label;
   els.body.classList.toggle("is-recording", isRecording);
 
@@ -702,7 +725,7 @@ function openSaveDraft(draft) {
 
   els.saveDialog.showModal();
   els.saveForm.elements.title.focus();
-  showToast("给它起个名字吧。");
+  showToast(t("toastName"));
 }
 
 async function saveDraft() {
@@ -732,7 +755,7 @@ async function saveDraft() {
     try {
       await putAudioBlob(audioKey, audioBlob);
     } catch (error) {
-      showToast("声音没有保存成功，请重试；这次不会生成空泡泡。");
+      showToast(t("toastSaveFail"));
       return;
     }
   }
@@ -742,7 +765,7 @@ async function saveDraft() {
   persist();
   els.saveDialog.close();
   render();
-  showToast("封好了，让它去飘。");
+  showToast(t("toastSaved"));
 }
 
 /*
@@ -782,7 +805,7 @@ async function playItem(item) {
     audio.addEventListener("ended", () => finishPlay(item));
     audio.addEventListener("error", () => {
       stopCurrentSound();
-      showToast("这颗有点害羞，先哼一声给你听。");
+      showToast(t("toastAudioFail"));
       state.currentPlayingId = item.id;
       playMockSound(item);
       render();
@@ -849,7 +872,7 @@ function toggleFavorite(item) {
   item.favorite = !item.favorite;
   persist();
   render();
-  showToast(item.favorite ? "圈起来了。" : "把圈擦掉了。");
+  showToast(t(item.favorite ? "toastFavOn" : "toastFavOff"));
 }
 
 function render() {
@@ -868,9 +891,7 @@ function syncField() {
   const list = getVisibleMeows();
   BubbleField.setItems(list);
   // 邀请，不是说明书 —— 休息产品不该有操作指引的语气
-  els.fieldHint.textContent = list.length
-    ? `戳一颗，听听${catLabel()}`
-    : "还没有声音，先吹一颗吧";
+  els.fieldHint.textContent = list.length ? t("fieldListen", { name: catLabel() }) : t("fieldEmpty");
 }
 
 /*
@@ -896,7 +917,7 @@ function catLabel() {
 function renderCount() {
   const count = state.meows.length;
   const favs = state.meows.filter((item) => item.favorite).length;
-  els.collectionCount.textContent = favs ? `${catLabel()}的 ${count} 颗声音，圈起来 ${favs} 颗` : `${catLabel()}的 ${count} 颗声音`;
+  els.collectionCount.textContent = t(favs ? "collectionFav" : "collection", { name: catLabel(), count, favs });
 }
 
 function renderFilterState() {
@@ -912,7 +933,7 @@ function renderMoodChips() {
     const face = mood.id === "all"
       ? ""
       : `<img class="chip-face" src="${BubbleField.faceDataUrl(mood.id, 28)}" alt="" />`;
-    return `<button class="chip" type="button" data-mood="${mood.id}" aria-pressed="false">${face}${mood.label}</button>`;
+    return `<button class="chip" type="button" data-mood="${mood.id}" aria-pressed="false">${face}${moodLabel(mood)}</button>`;
   }).join("");
 }
 
@@ -1103,7 +1124,7 @@ function setupDropdowns() {
     getOptions: () =>
       selectableMoods().map((mood) => ({
         value: mood.id,
-        label: mood.label,
+        label: moodLabel(mood),
         icon: BubbleField.faceDataUrl(mood.id, 30)
       })),
     onCreate: (label) => createCustomMood(label)
@@ -1116,7 +1137,7 @@ function setupDropdowns() {
     hidden: els.sortValue,
     listbox: els.sortListbox,
     allowCreate: false,
-    getOptions: () => SORTS,
+    getOptions: () => SORTS.map((sort) => ({ ...sort, label: t(sort.labelKey) })),
     onChange: (value) => {
       state.filters.sortBy = value;
       render();
@@ -1630,6 +1651,10 @@ function showToast(message) {
   }, 2200);
 }
 
+function moodLabel(mood) {
+  return mood.labelKey ? t(mood.labelKey) : mood.label;
+}
+
 async function handleAuthSubmit(event) {
   event.preventDefault();
   const email = els.authEmail.value.trim();
@@ -1641,15 +1666,15 @@ async function handleAuthSubmit(event) {
       await window.CloudSync.sendOtp(email);
       els.otpLabel.hidden = false;
       els.authOtp.required = true;
-      els.authSubmit.textContent = "验证并登录";
-      els.syncStatus.textContent = "验证码已发送，请查看邮箱。";
+      els.authSubmit.textContent = t("verifyLogin");
+      els.syncStatus.textContent = t("otpSent");
       els.authOtp.focus();
     } else {
       await window.CloudSync.verifyOtp(email, token);
-      els.syncStatus.textContent = "登录成功，正在同步。";
+      els.syncStatus.textContent = t("loginSuccess");
     }
   } catch (error) {
-    els.syncStatus.textContent = `登录失败：${error.message || "请稍后重试"}`;
+    els.syncStatus.textContent = t("loginFailed", { message: error.message || t("retry") });
   } finally {
     els.authSubmit.disabled = false;
   }
@@ -1665,17 +1690,29 @@ function setupCloudSync() {
     commit: () => { persist(); render(); },
     onStatus: (message) => { if (els.syncStatus) els.syncStatus.textContent = message; },
     onAuth: (user) => {
-      els.accountButton.textContent = user ? "已登录 · 同步" : "登录同步";
+      els.accountButton.textContent = t(user ? "loggedSync" : "loginSync");
       els.authForm.hidden = Boolean(user);
       els.authSigned.hidden = !user;
       if (user) {
-        els.authIdentity.textContent = user.email || "已登录";
-        els.syncStatus.textContent = "账号已连接";
+        els.authIdentity.textContent = user.email || t("loggedIn");
+        els.syncStatus.textContent = t("connected");
       } else {
-        els.syncStatus.textContent = "还没有登录";
+        els.syncStatus.textContent = t("notLogged");
       }
     }
   });
+}
+
+function refreshLanguage() {
+  renderMoodChips();
+  render();
+  sortDropdown?.setValue(state.filters.sortBy);
+  if (state.isRecording) setRecordingState(true, t("recordGrowing"));
+  else setRecordingState(false, t("recordDry"));
+  const user = window.CloudSync?.user;
+  els.accountButton.textContent = t(user ? "loggedSync" : "loginSync");
+  els.authSubmit.textContent = t(els.otpLabel.hidden ? "sendOtp" : "verifyLogin");
+  els.syncStatus.textContent = t(user ? "connected" : "notLogged");
 }
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

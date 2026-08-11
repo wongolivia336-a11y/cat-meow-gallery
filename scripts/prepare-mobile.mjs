@@ -7,7 +7,7 @@ const out = resolve(root, "www");
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 
-for (const name of ["index.html", "styles.css", "app.js", "bubbles.js", "domi.js", "cloud.js", "manifest.webmanifest"]) {
+for (const name of ["index.html", "styles.css", "app.js", "bubbles.js", "domi.js", "cloud.js", "i18n.js", "manifest.webmanifest"]) {
   await copyFile(resolve(root, name), resolve(out, name));
 }
 

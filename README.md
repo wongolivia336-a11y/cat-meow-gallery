@@ -1,5 +1,7 @@
 # meow gallery
 
+[中文](README.md) | [English](README.en.md)
+
 > 手机捉住猫叫，电脑把它吹回来。
 
 meow gallery 是一只装着真实猫声的桌面宠物。多米平时在屏幕角落睡觉、舔爪、观察鼠标；
@@ -134,13 +136,14 @@ node node_modules/electron/install.js
 
 ## 代码结构
 
-核心文件保持零构建步骤，直接开浏览器就能跑。
+核心文件保持零构建步骤，直接开浏览器就能跑。界面可在右上角切换中文 / English，桌宠托盘也提供相同语言选项。
 
 ```
 index.html      结构 + 手绘抖动滤镜的 SVG 定义
 styles.css      手绘 UI 系统（设计 token、抖动边框机制、两套模式）
 bubbles.js      泡泡场：物理 + 预渲染 + 绘制
 domi.js         多米桌宠：预渲染姿态 + 常驻/出场状态机
+i18n.js         网页、手机与桌宠控制界面的中英双语文案
 app.js          数据、录音、播放、存储、界面逻辑
 electron/       桌宠主进程与 preload
 ```
@@ -213,11 +216,10 @@ CSS 的 `filter` 会把整个子树先合成成位图再扭曲，子元素写 `f
 
 ---
 
-## 还没做
+## 下一步
 
-- [ ] 导出 / 导入 —— 把"手机录、电脑听"这条链路跑通
-- [ ] PWA（manifest + service worker），手机装到主屏、离线可用
-- [ ] 云同步（Supabase）—— **等验证了真的会用手机录再做**
-- [ ] 手绘素材接入（多米角色形象、空状态插画），规格见 [ASSET_BRIEF.md](ASSET_BRIEF.md)
+- [ ] 完成 Apple Developer 签名并发布 iOS TestFlight
+- [ ] 为 Windows / macOS 正式分发补齐代码签名与 notarization
+- [ ] 继续扩充多米的稚拙手绘动作素材与过渡动画
 
 更多产品笔记见 [PRODUCT_NOTES.md](PRODUCT_NOTES.md)。

@@ -1,9 +1,9 @@
-const CACHE = "meow-gallery-v4";
+const CACHE = "meow-gallery-v5";
 const APP_SHELL = [
-  "/", "/index.html", "/styles.css?v=21", "/bubbles.js?v=24", "/domi.js?v=4", "/cloud.js?v=2", "/app.js?v=24",
+  "/", "/index.html", "/styles.css?v=22", "/i18n.js?v=1", "/bubbles.js?v=24", "/domi.js?v=5", "/cloud.js?v=3", "/app.js?v=25",
   "/manifest.webmanifest", "/vendor/matter.min.js", "/vendor/rough.js",
   "/vendor/supabase.js",
-  "/assets/domi-tray.png", "/assets/domi-icon-192.png", "/assets/domi-icon-512.png"
+  "/assets/domi-tray.png", "/assets/domi-icon-192.png", "/assets/domi-icon-512.png", "/assets/domi-sprite-sheet-v1.png"
 ];
 
 self.addEventListener("install", (event) => {

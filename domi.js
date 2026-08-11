@@ -11,6 +11,12 @@
   const PINK = "#f77ea2";
   const EYE = "#a8c98d";
   const sprites = new Map();
+  const POSITION_KEY = "meow-gallery:pet-position";
+  const sheet = new Image();
+  const sheetCells = {
+    sleep: [0, 0], look: [1, 0], sit: [1, 0], lick: [2, 0],
+    "walk-1": [0, 1], "walk-2": [0, 1], puff: [1, 1], blow: [2, 1]
+  };
   const mouse = { x: -1, y: -1 };
   let getItems = () => [];
   let mode = "idle";
@@ -22,6 +28,9 @@
   let showtimeRadiusScale = 1;
   let corner = "bottom-left";
   let controlMode = false;
+  let sheetReady = false;
+  let customPosition = loadPosition();
+  let drag = null;
 
   const sequence = [
     ["walk-in", 2500], ["settle", 900], ["blow", 3600],
@@ -31,6 +40,8 @@
   function init(options) {
     getItems = options?.getItems || getItems;
     ["sleep", "look", "walk-1", "walk-2", "sit", "puff", "blow"].forEach(makeSprite);
+    sheet.addEventListener("load", () => { sheetReady = true; });
+    sheet.src = "assets/domi-sprite-sheet-v1.png";
     window.addEventListener("mousemove", (event) => {
       mouse.x = event.clientX;
       mouse.y = event.clientY;
@@ -59,7 +70,11 @@
   }
 
   function setCorner(next) {
-    if (["top-left", "top-right", "bottom-left", "bottom-right"].includes(next)) corner = next;
+    if (["top-left", "top-right", "bottom-left", "bottom-right"].includes(next)) {
+      corner = next;
+      customPosition = null;
+      localStorage.removeItem(POSITION_KEY);
+    }
   }
 
   function setControlMode(on) {
@@ -212,6 +227,9 @@
 
   function idlePosition(w, h) {
     // 控制界面的录音按钮在右下角：打开控制界面时强制暂避到左下。
+    if (!controlMode && customPosition) {
+      return { x: customPosition.x * w, y: customPosition.y * h };
+    }
     const active = controlMode ? "bottom-left" : corner;
     const left = active.endsWith("left");
     const top = active.startsWith("top");
@@ -226,7 +244,8 @@
   function drawIdle(ctx, now, w, h) {
     const p = idlePosition(w, h);
     const awake = mouse.x >= 0 && Math.hypot(mouse.x - p.x, mouse.y - p.y) < 260;
-    const pose = awake ? "look" : "sleep";
+    const lickMoment = Math.floor(now / 1400) % 13 === 10;
+    const pose = awake ? "look" : lickMoment ? "lick" : "sleep";
     const breath = awake ? 1 : 1 + Math.sin(now / 900) * 0.018;
     paint(ctx, pose, p.x, p.y, 0.46 * breath, 1);
   }
@@ -235,6 +254,40 @@
     const p = idlePosition(window.innerWidth, window.innerHeight);
     const radius = mode === "idle" ? 72 : 115;
     return Math.hypot(x - p.x, y - p.y) <= radius;
+  }
+
+  function beginDrag(x, y) {
+    if (mode !== "idle" || !hitTestAt(x, y)) return false;
+    const p = idlePosition(window.innerWidth, window.innerHeight);
+    drag = { dx: x - p.x, dy: y - p.y };
+    return true;
+  }
+
+  function dragTo(x, y) {
+    if (!drag) return false;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const px = Math.max(76, Math.min(w - 76, x - drag.dx));
+    const py = Math.max(76, Math.min(h - 76, y - drag.dy));
+    customPosition = { x: px / w, y: py / h };
+    return true;
+  }
+
+  function endDrag() {
+    if (!drag) return false;
+    drag = null;
+    if (customPosition) localStorage.setItem(POSITION_KEY, JSON.stringify(customPosition));
+    return true;
+  }
+
+  function loadPosition() {
+    try {
+      const value = JSON.parse(localStorage.getItem(POSITION_KEY));
+      if (Number.isFinite(value?.x) && Number.isFinite(value?.y)) {
+        return { x: Math.max(0.04, Math.min(0.96, value.x)), y: Math.max(0.06, Math.min(0.94, value.y)) };
+      }
+    } catch (error) {}
+    return null;
   }
 
   function drawShowtime(ctx, now, w, h) {
@@ -304,12 +357,23 @@
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
-    ctx.drawImage(sprite.canvas, -size / 2, -size / 2, size, size);
+    if (sheetReady && sheetCells[name]) {
+      const [column, row] = sheetCells[name];
+      const cellW = sheet.naturalWidth / 3;
+      const cellH = sheet.naturalHeight / 2;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(sheet, column * cellW, row * cellH, cellW, cellH, -size / 2, -size / 2, size, size);
+    } else {
+      ctx.drawImage(sprite.canvas, -size / 2, -size / 2, size, size);
+    }
     ctx.restore();
   }
 
   function mix(a, b, t) { return a + (b - a) * t; }
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
 
-  window.DomiPet = { init, startShowtime, setCorner, setControlMode, hitTestAt };
+  window.DomiPet = {
+    init, startShowtime, setCorner, setControlMode, hitTestAt,
+    beginDrag, dragTo, endDrag
+  };
 })();

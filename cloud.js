@@ -10,6 +10,7 @@
   let adapter = null;
   let session = null;
   let syncing = false;
+  const t = (key, variables) => window.I18n?.t(key, variables) || key;
 
   async function init(nextAdapter) {
     adapter = nextAdapter;
@@ -26,7 +27,7 @@
   }
 
   async function sendOtp(email) {
-    if (!client) throw new Error("同步服务没有加载");
+    if (!client) throw new Error(t("syncUnavailable"));
     const { error } = await client.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true, emailRedirectTo: WEB_AUTH_RETURN_URL }
@@ -51,7 +52,7 @@
   async function syncNow() {
     if (!client || !session || !adapter || syncing) return;
     syncing = true;
-    adapter.onStatus?.("正在同步…");
+    adapter.onStatus?.(t("syncing"));
     try {
       const userId = session.user.id;
       const localItems = adapter.getItems().filter((item) => item.source !== "seed" && item.source !== "mock");
@@ -107,9 +108,9 @@
         }
       }
       adapter.commit();
-      adapter.onStatus?.(`已同步 ${remote?.length || 0} 颗泡泡`);
+      adapter.onStatus?.(t("synced", { count: remote?.length || 0 }));
     } catch (error) {
-      adapter.onStatus?.(`同步失败：${error.message || "稍后重试"}`);
+      adapter.onStatus?.(t("syncFailed", { message: error.message || t("retry") }));
     } finally {
       syncing = false;
     }
