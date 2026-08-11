@@ -65,7 +65,6 @@ const state = {
   mediaRecorder: null,
   chunks: [],
   recordingStream: null,
-  mockRecordingTimer: null,
   currentAudio: null,
   currentMockStop: null,
   currentMockTimer: null,
@@ -265,7 +264,7 @@ function setupDesktopPet() {
   if (!window.meowPet?.isPet) return;
   els.body.classList.add("is-pet");
   BubbleField.setPetRitual(true);
-  window.DomiPet?.init({ getItems: () => state.meows });
+  window.DomiPet?.init({ getItems: () => state.meows.filter(isCollectedRecording) });
 
   let lastX = -1;
   let lastY = -1;
@@ -402,7 +401,7 @@ async function startRecording() {
   if (state.isRecording) return;
 
   if (!canUseMediaRecorder()) {
-    startMockRecording("这个浏览器听不见麦克风，先吹颗空的。");
+    failRecording("这个设备暂时无法使用麦克风，没有保存空泡泡。");
     return;
   }
 
@@ -442,7 +441,7 @@ async function startRecording() {
       stopRecordingStream();
       state.mediaRecorder = null;
       setRecordingState(false, "安静等待中");
-      startMockRecording("录音断了，先留个空泡泡。");
+      failRecording("录音中断了，请重新录制；这次不会生成空泡泡。");
     });
 
     state.mediaRecorder.addEventListener("stop", async () => {
@@ -454,7 +453,7 @@ async function startRecording() {
       state.mediaRecorder = null;
 
       if (!blob.size) {
-        startMockRecording("这次没捉到声音，先留个空泡泡。");
+        failRecording("这次没有录到声音，请重新试一次。");
         return;
       }
 
@@ -480,7 +479,7 @@ async function startRecording() {
   } catch (error) {
     stopRecordingStream();
     state.mediaRecorder = null;
-    startMockRecording("麦克风没打开，先吹颗空的。");
+    failRecording("麦克风没有打开，请授权后重新录制。");
   }
 }
 
@@ -489,8 +488,6 @@ function stopRecording() {
 
   if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
     state.mediaRecorder.stop();
-  } else if (state.mockRecordingTimer) {
-    completeMockRecording();
   } else {
     stopRecordingStream();
   }
@@ -498,31 +495,12 @@ function stopRecording() {
   setRecordingState(false, "泡泡纸还没沾水");
 }
 
-function startMockRecording(message) {
-  state.recordingStartedAt = Date.now();
+function failRecording(message) {
+  stopRecordingStream();
   state.mediaRecorder = null;
   state.chunks = [];
-  setRecordingState(true, "模拟吹泡泡中");
-  showToast(message);
-
-  window.clearTimeout(state.mockRecordingTimer);
-  state.mockRecordingTimer = window.setTimeout(completeMockRecording, 1800);
-}
-
-function completeMockRecording() {
-  if (!state.isRecording) return;
-  const duration = Math.max(getRecordingDuration(), 2);
-  window.clearTimeout(state.mockRecordingTimer);
-  state.mockRecordingTimer = null;
   setRecordingState(false, "泡泡纸还没沾水");
-  openSaveDraft({
-    id: makeId(),
-    title: suggestTitle(),
-    audioUrl: "",
-    duration,
-    source: "mock",
-    waveform: generateWaveform()
-  });
+  showToast(message);
 }
 
 /* ====================================================================
@@ -719,7 +697,7 @@ function openSaveDraft(draft) {
 
   els.saveForm.elements.title.value = draft.title;
   setMoodValue(pickDefaultMood());
-  els.saveForm.elements.tags.value = draft.source === "mock" ? "模拟, 奶音" : "刚吹出, 奶音";
+  els.saveForm.elements.tags.value = "刚吹出, 奶音";
   els.saveForm.elements.note.value = draft.source === "recorded" ? "本次会话录到的一颗声音泡泡。" : "没有麦克风时生成的小小占位泡泡。";
 
   els.saveDialog.showModal();
@@ -754,10 +732,8 @@ async function saveDraft() {
     try {
       await putAudioBlob(audioKey, audioBlob);
     } catch (error) {
-      item.audioKey = "";
-      item.audioUrl = "";
-      item.source = "mock";
-      showToast("声音没存住，先留个空泡泡。");
+      showToast("声音没有保存成功，请重试；这次不会生成空泡泡。");
+      return;
     }
   }
 
@@ -1223,15 +1199,19 @@ function restore() {
   migrateLegacyKeys();
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    state.meows = getSeedMeows();
+    state.meows = [];
     return;
   }
 
   try {
     const saved = JSON.parse(raw);
-    state.meows = Array.isArray(saved) && saved.length ? saved.map(normalizeItem) : getSeedMeows();
+    state.meows = Array.isArray(saved)
+      ? saved.map(normalizeItem).filter(isCollectedRecording)
+      : [];
+    // 一次性清掉旧版内置 seed 和录音失败产生的 mock，之后不会再次出现。
+    persist();
   } catch (error) {
-    state.meows = getSeedMeows();
+    state.meows = [];
   }
 
   hydrateAudioUrls().then(render);
@@ -1333,35 +1313,9 @@ async function hydrateAudioUrls() {
   await Promise.all(state.meows.map((item) => getAudioUrlForItem(item)));
 }
 
-function getSeedMeows() {
-  const now = Date.now();
-  return [
-    makeSeed("seed-1", "咪呜泡泡", "小橘", "sweet", ["奶音", "短促"], "讨零食失败前的第一声。", 3, true, 4, now - 1000 * 60 * 12),
-    makeSeed("seed-2", "小小拖拉机呼噜", "年糕", "purr", ["呼噜", "摸头"], "午睡前自动开机。", 8, true, 9, now - 1000 * 60 * 42),
-    makeSeed("seed-3", "开饭雷达响了", "团团", "food", ["急急", "罐头"], "碗还没放下，声音已经到了。", 5, false, 6, now - 1000 * 60 * 88),
-    makeSeed("seed-4", "门缝里的嗯？", "豆包", "mystery", ["疑惑", "门缝"], "不知道在和谁开小会。", 4, false, 2, now - 1000 * 60 * 180),
-    makeSeed("seed-5", "困到融化喵", "乌云", "sleepy", ["慢慢", "睡前"], "闭眼前还要认真宣布一下。", 6, false, 5, now - 1000 * 60 * 260),
-    makeSeed("seed-6", "奶声抗议", "小橘", "protest", ["委屈", "拖长音"], "被抱起三秒后的软软反对票。", 7, true, 3, now - 1000 * 60 * 380)
-  ];
-}
-
-function makeSeed(id, title, catName, mood, tags, note, duration, favorite, playCount, time) {
-  return normalizeItem({
-    id,
-    title,
-    catName,
-    mood,
-    tags,
-    note,
-    duration,
-    audioUrl: "",
-    source: "seed",
-    favorite,
-    playCount,
-    createdAt: new Date(time).toISOString(),
-    color: getMood(mood).color,
-    waveform: generateWaveform(id)
-  });
+function isCollectedRecording(item) {
+  if (!item || item.source === "seed" || item.source === "mock") return false;
+  return Boolean(item.audioKey || item.audioUrl || item.cloudAudioPath);
 }
 
 function normalizeItem(item) {
@@ -1377,7 +1331,8 @@ function normalizeItem(item) {
     duration: Math.max(1, Number(item.duration) || 3),
     audioUrl: item.audioUrl || "",
     audioKey: item.audioKey || "",
-    source: item.source || "seed",
+    cloudAudioPath: item.cloudAudioPath || "",
+    source: item.source || (item.audioKey || item.audioUrl ? "recorded" : "unknown"),
     favorite: Boolean(item.favorite),
     playCount: Number(item.playCount) || 0,
     createdAt: item.createdAt || new Date().toISOString(),

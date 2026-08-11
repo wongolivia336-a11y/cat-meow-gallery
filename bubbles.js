@@ -639,10 +639,15 @@
   }
 
   function ritualTargetCount(itemCount) {
-    if (!itemCount) return 0;
+    return Math.max(0, Number(itemCount) || 0);
+  }
+
+  function ritualRadiusScale(itemCount) {
+    if (!itemCount) return 1;
     const area = window.innerWidth * window.innerHeight;
-    // 仪式需要形成一整屏泡泡墙；碰撞后的自然空隙仍会透出桌面。
-    return clamp(Math.ceil((area * 0.72) / (Math.PI * 78 * 78)), 28, 84);
+    // 数量严格等于录音数，只用尺寸表达收藏量：少则大，多则逐渐缩小。
+    const scale = Math.sqrt((area * 0.38) / (itemCount * Math.PI * 62 * 62));
+    return clamp(scale, 0.62, 2.25);
   }
 
   function clearAll(immediate = false) {
@@ -976,6 +981,6 @@
 
   window.BubbleField = {
     init, setItems, setRecording, setMode, setMoods, spawnAt, setOverlayDraw,
-    hitTestAt, faceDataUrl, destroy, setPetRitual, ritualTargetCount, clearAll, TUNING
+    hitTestAt, faceDataUrl, destroy, setPetRitual, ritualTargetCount, ritualRadiusScale, clearAll, TUNING
   };
 })();

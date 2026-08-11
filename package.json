@@ -1,6 +1,6 @@
 {
   "name": "meow-gallery",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "把猫叫存成会飘在桌面上的泡泡，戳破就能听见。",
   "main": "electron/main.js",

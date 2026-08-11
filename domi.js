@@ -19,6 +19,7 @@
   let spawned = 0;
   let done = null;
   let showtimeTarget = 0;
+  let showtimeRadiusScale = 1;
   let corner = "bottom-left";
   let controlMode = false;
 
@@ -39,12 +40,18 @@
 
   function startShowtime(onDone) {
     if (mode !== "idle") return false;
+    const items = getItems().filter((item) => item.audioUrl || item.audioKey);
+    if (!items.length) {
+      window.BubbleField?.clearAll(true);
+      onDone?.();
+      return false;
+    }
     mode = "walk-in";
     phaseStarted = performance.now();
     side = Math.random() < 0.5 ? -1 : 1;
     spawned = 0;
-    const items = getItems().filter((item) => item.audioUrl || item.audioKey);
     showtimeTarget = window.BubbleField?.ritualTargetCount(items.length) || 0;
+    showtimeRadiusScale = window.BubbleField?.ritualRadiusScale(items.length) || 1;
     window.BubbleField?.clearAll(true);
     sequence[2][1] = Math.max(4200, showtimeTarget * 420);
     done = onDone || null;
@@ -251,14 +258,14 @@
       const wanted = Math.min(showtimeTarget, Math.floor(elapsed / 420) + 1);
       const items = getItems().filter((item) => item.audioUrl || item.audioKey);
       while (spawned < wanted && items.length) {
-        const item = items[spawned % items.length];
+        const item = items[spawned];
         const mouthX = x + (side < 0 ? 74 : -74);
         window.BubbleField.spawnAt(item, mouthX, floor - 96, {
           velocity: {
             x: side < 0 ? 1.8 + spawned * 0.035 : -1.8 - spawned * 0.035,
             y: -1.5 - spawned * 0.035
           },
-          radiusScale: 1.3
+          radiusScale: showtimeRadiusScale
         });
         spawned += 1;
       }
