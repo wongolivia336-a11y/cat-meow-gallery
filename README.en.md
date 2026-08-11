@@ -84,4 +84,4 @@ android/ ios/   Capacitor native projects
 - [ ] Add production code signing and notarization for desktop releases
 - [ ] Expand Domi's intentionally clumsy hand-drawn pose and transition library
 
-More product notes: [PRODUCT_NOTES.md](PRODUCT_NOTES.md).
+More product notes: [PRODUCT_NOTES.md](PRODUCT_NOTES.md). The next-session checklist is in [TODO.md](TODO.md).

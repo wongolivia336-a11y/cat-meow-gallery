@@ -222,4 +222,4 @@ CSS 的 `filter` 会把整个子树先合成成位图再扭曲，子元素写 `f
 - [ ] 为 Windows / macOS 正式分发补齐代码签名与 notarization
 - [ ] 继续扩充多米的稚拙手绘动作素材与过渡动画
 
-更多产品笔记见 [PRODUCT_NOTES.md](PRODUCT_NOTES.md)。
+更多产品笔记见 [PRODUCT_NOTES.md](PRODUCT_NOTES.md)，下一次开发清单见 [TODO.md](TODO.md)。
