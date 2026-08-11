@@ -35,6 +35,7 @@ jobs:
           name: desktop-${{ runner.os }}
           path: |
             dist/*.exe
+            dist/*.zip
             dist/*.dmg
           if-no-files-found: error
       - name: Publish tagged installers
@@ -43,5 +44,6 @@ jobs:
         with:
           files: |
             dist/*.exe
+            dist/*.zip
             dist/*.dmg
           generate_release_notes: true
