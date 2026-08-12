@@ -227,6 +227,7 @@ body.is-pet.is-control::after {
 
 .app-bar-title {
   pointer-events: none;
+  min-width: 0;
 }
 
 .app-tagline {
@@ -241,6 +242,8 @@ body.is-pet.is-control::after {
   align-items: center;
   gap: 9px;
   pointer-events: auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .text-button {
@@ -894,5 +897,76 @@ button:focus-visible {
   }
 }
 .language-toggle {
-  min-width: 3.2rem;
+  min-width: 3.5rem;
+  border: var(--stroke-thin) solid rgba(68, 62, 55, 0.55);
+  border-radius: 999px;
+  padding: 6px 11px;
+  background: rgba(255, 253, 248, 0.72);
+  text-decoration: none;
+  box-shadow: 1px 1px 0 rgba(63, 58, 52, 0.12);
+  transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.language-toggle:hover {
+  transform: rotate(-2deg) translateY(-1px);
+  background: #fff;
+  box-shadow: 2px 2px 0 rgba(63, 58, 52, 0.14);
+}
+
+.language-toggle:active { transform: translateY(1px); }
+
+::view-transition-old(root) { animation: language-out 130ms ease both; }
+::view-transition-new(root) { animation: language-in 220ms ease both; }
+
+@keyframes language-out {
+  to { opacity: 0.78; transform: translateY(-2px); }
+}
+
+@keyframes language-in {
+  from { opacity: 0.72; transform: translateY(3px); }
+}
+
+@media (max-width: 719px) {
+  .app-shell {
+    padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+  }
+
+  .app-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px 10px;
+  }
+
+  .app-bar-title { padding-top: 2px; }
+  .app-tagline {
+    max-width: 21rem;
+    line-height: 1.35;
+  }
+
+  .app-bar-actions {
+    max-width: min(52vw, 240px);
+    gap: 2px 8px;
+  }
+
+  .app-bar-actions .text-button {
+    padding-block: 5px;
+    white-space: nowrap;
+  }
+
+  .app-bar-actions .language-toggle { order: -2; }
+  .app-bar-actions .icon-button { order: -1; }
+}
+
+@media (max-width: 430px) {
+  .app-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .app-bar-actions {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+
+  .app-tagline { font-size: 0.76rem; }
 }

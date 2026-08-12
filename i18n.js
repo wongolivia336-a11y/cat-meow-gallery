@@ -35,11 +35,11 @@
       recordInterrupted: "Recording stopped unexpectedly. Please try again; no empty bubble was created.", recordEmpty: "No sound was captured. Please try again.", recordMicDenied: "The microphone could not open. Allow access and try again.",
       saveTitle: "Before sealing the bubble", bubbleName: "Bubble name", moodType: "Sound type", moodPlaceholder: "Choose one or name your own",
       tags: "Tags", tagsPlaceholder: "tiny meow, midnight, dinner", note: "Story behind this bubble", discard: "Let it go", save: "Seal and float",
-      aboutTitle: "Catch a meow on your phone. Domi blows it back on desktop.", aboutBody: "Domi naps in a corner of your desktop. When it is time to rest, Domi brings out a bubble wand and blows your real recordings into bubbles you can pop.",
+      aboutTitle: "Catch a meow on your phone. domi brings it back on desktop.", aboutBody: "domi naps wherever it feels cozy on your desktop. At break time, domi takes out a bubble wand and turns your real recordings into bubbles you can pop.",
       step1: "Record a meow on mobile", step2: "Sync it to desktop", step3: "Pop bubbles at break time", winDownload: "Download Windows portable ZIP",
       macArm: "Mac · Apple silicon", macIntel: "Mac · Intel", androidDownload: "Download Android APK", iphonePending: "iPhone · TestFlight pending signing",
       installPhone: "Install on phone", downloadNote: "Windows uses a portable ZIP; Android installs from an APK; iPhone distribution needs Apple Developer signing and TestFlight.",
-      authTitle: "Let your phone and computer know the same Domi", authBody: "Sign in with an email code. Recordings are private by default and only your devices can read them.",
+      authTitle: "Let your phone and computer know the same domi", authBody: "Sign in with an email code. Your recordings stay private and are available only on your own devices.",
       email: "Email", otp: "Email code", otpPlaceholder: "Enter the code from your email", sendOtp: "Send code", verifyLogin: "Verify and sign in",
       syncNow: "Sync now", signOut: "Sign out", notLogged: "Not signed in", connected: "Account connected", loggedIn: "Signed in",
       otpSent: "Code sent. Check your email.", loginSuccess: "Signed in. Syncing now.", loginFailed: "Sign-in failed: {message}", retry: "Please try again later",
@@ -92,12 +92,18 @@
   }
 
   function setLanguage(next) {
-    language = next === "zh" ? "zh" : "en";
-    localStorage.setItem(KEY, language);
-    apply();
-    window.dispatchEvent(new CustomEvent("meow:language-change", { detail: { language } }));
+    const update = () => {
+      language = next === "zh" ? "zh" : "en";
+      localStorage.setItem(KEY, language);
+      apply();
+      document.body.dataset.language = language;
+      window.dispatchEvent(new CustomEvent("meow:language-change", { detail: { language } }));
+    };
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (document.startViewTransition && !reduceMotion) document.startViewTransition(update);
+    else update();
   }
 
   window.I18n = { t, apply, setLanguage, toggle: () => setLanguage(language === "zh" ? "en" : "zh"), get language() { return language; } };
-  document.addEventListener("DOMContentLoaded", () => apply(), { once: true });
+  document.addEventListener("DOMContentLoaded", () => { apply(); document.body.dataset.language = language; }, { once: true });
 })();

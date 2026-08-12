@@ -194,7 +194,7 @@ function menuTemplate() {
       click: () => { timerPaused = !timerPaused; timerTickAt = Date.now(); buildTray(); }
     },
     {
-      label: tr("多米待在哪个角落", "Domi's corner"),
+      label: tr("多米待在哪个角落", "domi's starting corner"),
       submenu: [
         ["左上", "top-left"], ["右上", "top-right"],
         ["左下", "bottom-left"], ["右下", "bottom-right"]

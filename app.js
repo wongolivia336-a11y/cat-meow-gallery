@@ -306,6 +306,16 @@ function setupDesktopPet() {
     draggingPet = false;
     window.DomiPet?.endDrag();
   });
+  window.addEventListener("pointercancel", () => {
+    if (!draggingPet) return;
+    draggingPet = false;
+    window.DomiPet?.endDrag();
+  });
+  window.addEventListener("blur", () => {
+    if (!draggingPet) return;
+    draggingPet = false;
+    window.DomiPet?.endDrag();
+  });
 
   /*
     ⚠️ 光有 mousemove 是不够的。
@@ -911,7 +921,8 @@ function renderMirror() {
 
 // 计数文案里带上猫名，一句话就把"这是谁的声音"说清楚
 function catLabel() {
-  return state.settings.catName || "多米";
+  const name = state.settings.catName || "多米";
+  return window.I18n?.language === "en" && name === "多米" ? "domi" : name;
 }
 
 function renderCount() {
@@ -1200,7 +1211,7 @@ function restoreSettings() {
   if (!state.settings.catName && state.meows[0]?.catName) {
     state.settings.catName = state.meows[0].catName;
   }
-  els.catNameInput.value = state.settings.catName;
+  els.catNameInput.value = catLabel();
 }
 
 function persistSettings() {
@@ -1704,6 +1715,7 @@ function setupCloudSync() {
 }
 
 function refreshLanguage() {
+  if (state.settings.catName === "多米") els.catNameInput.value = catLabel();
   renderMoodChips();
   render();
   sortDropdown?.setValue(state.filters.sortBy);

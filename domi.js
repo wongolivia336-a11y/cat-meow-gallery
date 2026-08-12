@@ -31,6 +31,8 @@
   let sheetReady = false;
   let customPosition = loadPosition();
   let drag = null;
+  let wander = null;
+  let nextWanderAt = 0;
 
   const sequence = [
     ["walk-in", 2500], ["settle", 900], ["blow", 3600],
@@ -47,6 +49,7 @@
       mouse.y = event.clientY;
     }, { passive: true });
     window.BubbleField?.setOverlayDraw(draw);
+    scheduleWander(performance.now(), 7000, 15000);
   }
 
   function startShowtime(onDone) {
@@ -74,6 +77,8 @@
       corner = next;
       customPosition = null;
       localStorage.removeItem(POSITION_KEY);
+      wander = null;
+      scheduleWander(performance.now(), 5000, 11000);
     }
   }
 
@@ -242,12 +247,72 @@
   }
 
   function drawIdle(ctx, now, w, h) {
-    const p = idlePosition(w, h);
+    let p = idlePosition(w, h);
+    if (!controlMode && !drag && !wander && now >= nextWanderAt) startWander(now, w, h, p);
+    if (wander) {
+      const progress = Math.min(1, (now - wander.started) / wander.duration);
+      const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+      p = { x: mix(wander.from.x, wander.to.x, eased), y: mix(wander.from.y, wander.to.y, eased) };
+      customPosition = { x: p.x / w, y: p.y / h };
+      const step = (now - wander.started) / 135;
+      const bob = Math.abs(Math.sin(step * Math.PI)) * 5;
+      const lean = Math.sin(step * Math.PI) * 0.035;
+      const facing = wander.to.x >= wander.from.x ? 1 : -1;
+      paint(ctx, Math.floor(step) % 2 ? "walk-1" : "walk-2", p.x, p.y - bob, 0.46, 1, { facing, rotate: lean });
+      if (progress >= 1) finishWander(now);
+      return;
+    }
     const awake = mouse.x >= 0 && Math.hypot(mouse.x - p.x, mouse.y - p.y) < 260;
     const lickMoment = Math.floor(now / 1400) % 13 === 10;
     const pose = awake ? "look" : lickMoment ? "lick" : "sleep";
     const breath = awake ? 1 : 1 + Math.sin(now / 900) * 0.018;
-    paint(ctx, pose, p.x, p.y, 0.46 * breath, 1);
+    const dragLift = drag ? 7 : 0;
+    paint(ctx, drag ? "look" : pose, p.x, p.y - dragLift, 0.46 * breath, 1, { rotate: drag ? -0.035 : 0 });
+    if (!awake && !drag && pose === "sleep") drawSleepMarks(ctx, now, p.x, p.y);
+  }
+
+  function startWander(now, w, h, from) {
+    const margin = 86;
+    const angle = Math.random() * Math.PI * 2;
+    const distance = Math.min(300, Math.max(120, Math.min(w, h) * (0.18 + Math.random() * 0.16)));
+    const to = {
+      x: Math.max(margin, Math.min(w - margin, from.x + Math.cos(angle) * distance)),
+      y: Math.max(margin, Math.min(h - margin, from.y + Math.sin(angle) * distance * 0.55))
+    };
+    const actualDistance = Math.hypot(to.x - from.x, to.y - from.y);
+    if (actualDistance < 64) return scheduleWander(now, 2500, 5000);
+    wander = { from: { ...from }, to, started: now, duration: Math.max(1800, actualDistance / 0.075) };
+  }
+
+  function finishWander(now) {
+    customPosition = { x: wander.to.x / window.innerWidth, y: wander.to.y / window.innerHeight };
+    localStorage.setItem(POSITION_KEY, JSON.stringify(customPosition));
+    wander = null;
+    scheduleWander(now, 12000, 26000);
+  }
+
+  function scheduleWander(now, minimum, maximum) {
+    nextWanderAt = now + minimum + Math.random() * (maximum - minimum);
+  }
+
+  function drawSleepMarks(ctx, now, x, y) {
+    ctx.save();
+    ctx.font = '700 18px "Comic Sans MS", cursive';
+    ctx.textAlign = "center";
+    ctx.fillStyle = INK;
+    for (let index = 0; index < 3; index += 1) {
+      const cycle = ((now / 2300) + index * 0.26) % 1;
+      const alpha = Math.sin(cycle * Math.PI) * 0.58;
+      const drift = Math.sin(cycle * Math.PI * 2 + index) * 4;
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.font = `700 ${14 + index * 4}px "Comic Sans MS", cursive`;
+      ctx.save();
+      ctx.translate(x + 43 + index * 13 + drift, y - 55 - cycle * 34 - index * 7);
+      ctx.rotate(-0.12 + index * 0.05);
+      ctx.fillText(index === 0 ? "z" : "Z", 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   function hitTestAt(x, y) {
@@ -259,6 +324,7 @@
   function beginDrag(x, y) {
     if (mode !== "idle" || !hitTestAt(x, y)) return false;
     const p = idlePosition(window.innerWidth, window.innerHeight);
+    wander = null;
     drag = { dx: x - p.x, dy: y - p.y };
     return true;
   }
@@ -277,6 +343,7 @@
     if (!drag) return false;
     drag = null;
     if (customPosition) localStorage.setItem(POSITION_KEY, JSON.stringify(customPosition));
+    scheduleWander(performance.now(), 9000, 18000);
     return true;
   }
 
@@ -351,12 +418,14 @@
     callback?.();
   }
 
-  function paint(ctx, name, x, y, scale, alpha) {
+  function paint(ctx, name, x, y, scale, alpha, motion = {}) {
     const sprite = sprites.get(name) || makeSprite(name);
     const size = sprite.size * scale;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
+    ctx.rotate(motion.rotate || 0);
+    ctx.scale(motion.facing || 1, 1);
     if (sheetReady && sheetCells[name]) {
       const [column, row] = sheetCells[name];
       const cellW = sheet.naturalWidth / 3;
