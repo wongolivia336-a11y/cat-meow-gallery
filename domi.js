@@ -17,6 +17,10 @@
     sleep: [0, 0], look: [1, 0], sit: [1, 0], lick: [2, 0],
     "walk-1": [0, 1], "walk-2": [0, 1], puff: [1, 1], blow: [2, 1]
   };
+  const sheetRegions = {
+    // 吹气素材的两颗蓝泡泡跨过了 3x2 网格边界，取样向左扩展，避免被切成一半。
+    blow: { x: 960, y: 512, width: 576, height: 512 }
+  };
   const mouse = { x: -1, y: -1 };
   let getItems = () => [];
   let mode = "idle";
@@ -33,6 +37,7 @@
   let drag = null;
   let wander = null;
   let nextWanderAt = 0;
+  let lastPetPosition = null;
 
   const sequence = [
     ["walk-in", 2500], ["settle", 900], ["blow", 3600],
@@ -253,16 +258,18 @@
       const progress = Math.min(1, (now - wander.started) / wander.duration);
       const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
       p = { x: mix(wander.from.x, wander.to.x, eased), y: mix(wander.from.y, wander.to.y, eased) };
+      lastPetPosition = p;
       customPosition = { x: p.x / w, y: p.y / h };
       const step = (now - wander.started) / 135;
       const bob = Math.abs(Math.sin(step * Math.PI)) * 5;
       const lean = Math.sin(step * Math.PI) * 0.035;
       const facing = wander.to.x >= wander.from.x ? 1 : -1;
-      paint(ctx, Math.floor(step) % 2 ? "walk-1" : "walk-2", p.x, p.y - bob, 0.46, 1, { facing, rotate: lean });
+      paintWalk(ctx, p.x, p.y - bob, 0.46, 1, step, { facing, rotate: lean });
       if (progress >= 1) finishWander(now);
       return;
     }
     const awake = mouse.x >= 0 && Math.hypot(mouse.x - p.x, mouse.y - p.y) < 260;
+    lastPetPosition = p;
     const lickMoment = Math.floor(now / 1400) % 13 === 10;
     const pose = awake ? "look" : lickMoment ? "lick" : "sleep";
     const breath = awake ? 1 : 1 + Math.sin(now / 900) * 0.018;
@@ -316,14 +323,14 @@
   }
 
   function hitTestAt(x, y) {
-    const p = idlePosition(window.innerWidth, window.innerHeight);
+    const p = lastPetPosition || idlePosition(window.innerWidth, window.innerHeight);
     const radius = mode === "idle" ? 72 : 115;
     return Math.hypot(x - p.x, y - p.y) <= radius;
   }
 
   function beginDrag(x, y) {
     if (mode !== "idle" || !hitTestAt(x, y)) return false;
-    const p = idlePosition(window.innerWidth, window.innerHeight);
+    const p = lastPetPosition || idlePosition(window.innerWidth, window.innerHeight);
     wander = null;
     drag = { dx: x - p.x, dy: y - p.y };
     return true;
@@ -401,7 +408,7 @@
       const stride = elapsed / 150;
       const bob = Math.abs(Math.sin(stride * Math.PI)) * 8;
       const lean = Math.sin(stride * Math.PI) * 0.045 * (mode === "walk-out" ? -1 : 1);
-      paint(ctx, pose, x, floor - bob, 0.78, 1, { facing, rotate: lean });
+      paintWalk(ctx, x, floor - bob, 0.78, 1, stride, { facing, rotate: lean });
     } else if (mode === "settle") {
       const settle = smoothstep(t);
       paint(ctx, "walk-1", x, floor - (1 - settle) * 5, 0.78, 1 - settle, { facing });
@@ -449,15 +456,48 @@
     ctx.rotate(motion.rotate || 0);
     ctx.scale(motion.facing || 1, 1);
     if (sheetReady && sheetCells[name]) {
-      const [column, row] = sheetCells[name];
       const cellW = sheet.naturalWidth / 3;
       const cellH = sheet.naturalHeight / 2;
+      const [column, row] = sheetCells[name];
+      const region = sheetRegions[name] || { x: column * cellW, y: row * cellH, width: cellW, height: cellH };
+      const drawWidth = size * (region.width / cellW);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sheet, column * cellW, row * cellH, cellW, cellH, -size / 2, -size / 2, size, size);
+      ctx.drawImage(sheet, region.x, region.y, region.width, region.height, -drawWidth / 2, -size / 2, drawWidth, size);
     } else {
       ctx.drawImage(sprite.canvas, -size / 2, -size / 2, size, size);
     }
     ctx.restore();
+  }
+
+  function paintWalk(ctx, x, y, scale, alpha, phase, motion = {}) {
+    if (!sheetReady) return paint(ctx, "walk-1", x, y, scale, alpha, motion);
+    const cell = 512;
+    const size = 280 * scale;
+    const gait = Math.sin(phase * Math.PI);
+    const counter = Math.sin((phase + 1) * Math.PI);
+    const frontX = gait * 12 * scale;
+    const rearX = counter * 10 * scale;
+    const frontY = -Math.max(0, gait) * 8 * scale;
+    const rearY = -Math.max(0, counter) * 7 * scale;
+    const sourceY = 512;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.rotate(motion.rotate || 0);
+    ctx.scale(motion.facing || 1, 1);
+    ctx.imageSmoothingEnabled = false;
+
+    // 头、背与尾巴保持稳定，四肢以下用两组相反相位移动，形成真正的交替步态。
+    ctx.drawImage(sheet, 0, sourceY, cell, 346, -size / 2, -size / 2, size, size * (346 / cell));
+    drawWalkSlice(ctx, 38, 274, 205, 238, -size / 2 + size * (38 / cell) + frontX, -size / 2 + size * (274 / cell) + frontY, size, cell);
+    drawWalkSlice(ctx, 200, 270, 178, 242, -size / 2 + size * (200 / cell) + rearX, -size / 2 + size * (270 / cell) + rearY, size, cell);
+    drawWalkSlice(ctx, 366, 250, 146, 262, -size / 2 + size * (366 / cell), -size / 2 + size * (250 / cell), size, cell);
+    ctx.restore();
+  }
+
+  function drawWalkSlice(ctx, sx, sy, sw, sh, dx, dy, size, cell) {
+    ctx.drawImage(sheet, sx, 512 + sy, sw, sh, dx, dy, size * (sw / cell), size * (sh / cell));
   }
 
   function mix(a, b, t) { return a + (b - a) * t; }

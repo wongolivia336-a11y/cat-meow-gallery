@@ -1,6 +1,6 @@
-const CACHE = "meow-gallery-v7";
+const CACHE = "meow-gallery-v8";
 const APP_SHELL = [
-  "/", "/index.html", "/styles.css?v=23", "/i18n.js?v=2", "/bubbles.js?v=25", "/domi.js?v=7", "/cloud.js?v=3", "/app.js?v=26",
+  "/", "/index.html", "/styles.css?v=23", "/i18n.js?v=2", "/bubbles.js?v=25", "/domi.js?v=8", "/cloud.js?v=3", "/app.js?v=27",
   "/manifest.webmanifest", "/vendor/matter.min.js", "/vendor/rough.js",
   "/vendor/supabase.js",
   "/assets/domi-tray.png", "/assets/domi-icon-192.png", "/assets/domi-icon-512.png", "/assets/domi-sprite-sheet-v1.png"

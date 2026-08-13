@@ -282,6 +282,13 @@ function setupDesktopPet() {
 
   const evaluate = () => {
     if (state.controlMode || lastX < 0) return;
+    if (draggingPet) {
+      if (!interactive) {
+        interactive = true;
+        window.meowPet.setInteractive(true);
+      }
+      return;
+    }
     const over = BubbleField.hitTestAt(lastX, lastY) || window.DomiPet?.hitTestAt(lastX, lastY);
     if (over === interactive) return;
     interactive = over;
@@ -298,6 +305,8 @@ function setupDesktopPet() {
   window.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || !window.DomiPet?.beginDrag(event.clientX, event.clientY)) return;
     draggingPet = true;
+    interactive = true;
+    window.meowPet.setInteractive(true);
     event.preventDefault();
   });
 
@@ -305,16 +314,19 @@ function setupDesktopPet() {
     if (!draggingPet) return;
     draggingPet = false;
     window.DomiPet?.endDrag();
+    evaluate();
   });
   window.addEventListener("pointercancel", () => {
     if (!draggingPet) return;
     draggingPet = false;
     window.DomiPet?.endDrag();
+    evaluate();
   });
   window.addEventListener("blur", () => {
     if (!draggingPet) return;
     draggingPet = false;
     window.DomiPet?.endDrag();
+    evaluate();
   });
 
   /*
