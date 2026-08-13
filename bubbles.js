@@ -611,6 +611,8 @@
       */
       sprite: makeSprite(item, t, instance === 0),
       spriteKey: spriteKey(item, instance),
+      bornAt: performance.now(),
+      growFromMouth: Boolean(placement?.growFromMouth),
       alpha: 0,
       target: 1,
       state: "alive",
@@ -628,6 +630,7 @@
       y: clamp(y, 24, canvas.clientHeight - 24),
       velocity: options?.velocity || options || { x: 1.4, y: -1.2 },
       radiusScale: options?.radiusScale || 1
+      ,growFromMouth: true
     });
     return bubbles[bubbles.length - 1] || null;
   }
@@ -881,6 +884,14 @@
       ctx.save();
       ctx.globalAlpha = Math.min(1, b.alpha) * fieldDim;
       ctx.translate(p.x, p.y);
+      if (b.growFromMouth) {
+        const age = Math.max(0, now - b.bornAt);
+        const grow = Math.min(1, age / 760);
+        const easedGrow = 1 - Math.pow(1 - grow, 3);
+        const scale = 0.12 + easedGrow * 0.88;
+        ctx.scale(scale, scale);
+        if (grow >= 1) b.growFromMouth = false;
+      }
       /*
         故意不旋转。
         泡泡是球体，转起来在视觉上不产生任何信息，

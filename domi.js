@@ -373,13 +373,13 @@
     } else if (mode === "settle") {
       pose = "sit";
     } else if (mode === "blow") {
-      const beat = (elapsed % 900) / 900;
-      pose = beat < 0.48 ? "puff" : "blow";
+      const beat = (elapsed % 1050) / 1050;
+      pose = "puff";
       const wanted = Math.min(showtimeTarget, Math.floor(elapsed / 420) + 1);
       const items = getItems().filter((item) => item.audioUrl || item.audioKey);
       while (spawned < wanted && items.length) {
         const item = items[spawned];
-        const mouthX = x + (side < 0 ? 74 : -74);
+        const mouthX = x + (side < 0 ? 112 : -112);
         window.BubbleField.spawnAt(item, mouthX, floor - 96, {
           velocity: {
             x: side < 0 ? 1.8 + spawned * 0.035 : -1.8 - spawned * 0.035,
@@ -396,10 +396,32 @@
       pose = Math.floor(elapsed / 190) % 2 ? "walk-1" : "walk-2";
     }
 
-    ctx.save();
-    if (side > 0) { ctx.translate(x, 0); ctx.scale(-1, 1); ctx.translate(-x, 0); }
-    paint(ctx, pose, x, floor, 0.78, 1);
-    ctx.restore();
+    const facing = side < 0 ? -1 : 1;
+    if (mode === "walk-in" || mode === "walk-out") {
+      const stride = elapsed / 150;
+      const bob = Math.abs(Math.sin(stride * Math.PI)) * 8;
+      const lean = Math.sin(stride * Math.PI) * 0.045 * (mode === "walk-out" ? -1 : 1);
+      paint(ctx, pose, x, floor - bob, 0.78, 1, { facing, rotate: lean });
+    } else if (mode === "settle") {
+      const settle = smoothstep(t);
+      paint(ctx, "walk-1", x, floor - (1 - settle) * 5, 0.78, 1 - settle, { facing });
+      paint(ctx, "sit", x, floor, 0.78 * (0.96 + settle * 0.04), settle, { facing });
+    } else if (mode === "blow") {
+      const beat = (elapsed % 1050) / 1050;
+      const exhale = smoothstep(Math.min(1, beat / 0.58));
+      const release = beat < 0.58 ? exhale : 1 - smoothstep((beat - 0.58) / 0.42);
+      const puffAlpha = Math.max(0, 1 - release);
+      const blowAlpha = Math.min(1, release * 1.35);
+      const breathe = 1 + Math.sin(beat * Math.PI) * 0.018;
+      paint(ctx, "puff", x, floor, 0.78 * breathe, puffAlpha, { facing, rotate: -0.012 * release });
+      paint(ctx, "blow", x, floor - release * 2, 0.78 * breathe, blowAlpha, { facing, rotate: 0.012 * release });
+    } else if (mode === "watch") {
+      const arrive = smoothstep(Math.min(1, t * 2.4));
+      paint(ctx, "sit", x, floor, 0.78, 1 - arrive, { facing });
+      paint(ctx, "look", x, floor, 0.78, arrive, { facing });
+    } else {
+      paint(ctx, pose, x, floor, 0.78, 1, { facing });
+    }
 
     if (t >= 1) advance(now);
   }
@@ -440,6 +462,10 @@
 
   function mix(a, b, t) { return a + (b - a) * t; }
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
+  function smoothstep(t) {
+    const value = Math.max(0, Math.min(1, t));
+    return value * value * (3 - 2 * value);
+  }
 
   window.DomiPet = {
     init, startShowtime, setCorner, setControlMode, hitTestAt,
