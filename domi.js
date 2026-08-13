@@ -17,10 +17,6 @@
     sleep: [0, 0], look: [1, 0], sit: [1, 0], lick: [2, 0],
     "walk-1": [0, 1], "walk-2": [0, 1], puff: [1, 1], blow: [2, 1]
   };
-  const sheetRegions = {
-    // 吹气素材的两颗蓝泡泡跨过了 3x2 网格边界，取样向左扩展，避免被切成一半。
-    blow: { x: 960, y: 512, width: 576, height: 512 }
-  };
   const mouse = { x: -1, y: -1 };
   let getItems = () => [];
   let mode = "idle";
@@ -38,6 +34,7 @@
   let wander = null;
   let nextWanderAt = 0;
   let lastPetPosition = null;
+  let lastHitboxReport = 0;
 
   const sequence = [
     ["walk-in", 2500], ["settle", 900], ["blow", 3600],
@@ -259,6 +256,7 @@
       const eased = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
       p = { x: mix(wander.from.x, wander.to.x, eased), y: mix(wander.from.y, wander.to.y, eased) };
       lastPetPosition = p;
+      reportHitbox(p, 78);
       customPosition = { x: p.x / w, y: p.y / h };
       const step = (now - wander.started) / 135;
       const bob = Math.abs(Math.sin(step * Math.PI)) * 5;
@@ -270,6 +268,7 @@
     }
     const awake = mouse.x >= 0 && Math.hypot(mouse.x - p.x, mouse.y - p.y) < 260;
     lastPetPosition = p;
+    reportHitbox(p, 78);
     const lickMoment = Math.floor(now / 1400) % 13 === 10;
     const pose = awake ? "look" : lickMoment ? "lick" : "sleep";
     const breath = awake ? 1 : 1 + Math.sin(now / 900) * 0.018;
@@ -326,6 +325,13 @@
     const p = lastPetPosition || idlePosition(window.innerWidth, window.innerHeight);
     const radius = mode === "idle" ? 72 : 115;
     return Math.hypot(x - p.x, y - p.y) <= radius;
+  }
+
+  function reportHitbox(position, radius) {
+    const now = performance.now();
+    if (now - lastHitboxReport < 48) return;
+    lastHitboxReport = now;
+    window.meowPet?.setPetHitbox?.({ x: position.x, y: position.y, radius });
   }
 
   function beginDrag(x, y) {
@@ -404,6 +410,8 @@
     }
 
     const facing = side < 0 ? -1 : 1;
+    lastPetPosition = { x, y: floor };
+    reportHitbox(lastPetPosition, 118);
     if (mode === "walk-in" || mode === "walk-out") {
       const stride = elapsed / 150;
       const bob = Math.abs(Math.sin(stride * Math.PI)) * 8;
@@ -459,10 +467,20 @@
       const cellW = sheet.naturalWidth / 3;
       const cellH = sheet.naturalHeight / 2;
       const [column, row] = sheetCells[name];
-      const region = sheetRegions[name] || { x: column * cellW, y: row * cellH, width: cellW, height: cellH };
-      const drawWidth = size * (region.width / cellW);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sheet, region.x, region.y, region.width, region.height, -drawWidth / 2, -size / 2, drawWidth, size);
+      ctx.drawImage(sheet, column * cellW, row * cellH, cellW, cellH, -size / 2, -size / 2, size, size);
+      if (name === "blow") {
+        // 两颗蓝泡泡越过了 blow 单元格左边界；只补回上方窄条。
+        // 之前扩大整张取样区会把相邻动作格下方的黑色尾巴也一起带进来。
+        const stripW = 72;
+        const stripH = 238;
+        ctx.drawImage(
+          sheet,
+          column * cellW - stripW, row * cellH, stripW, stripH,
+          -size / 2 - size * (stripW / cellW), -size / 2,
+          size * (stripW / cellW), size * (stripH / cellH)
+        );
+      }
     } else {
       ctx.drawImage(sprite.canvas, -size / 2, -size / 2, size, size);
     }

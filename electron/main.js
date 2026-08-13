@@ -42,6 +42,9 @@ let timerId = null;
 let petCorner = "bottom-left";
 let autoClearMinutes = 5;
 let language = "zh";
+let hitTestTimerId = null;
+let petHitbox = null;
+let rendererInteractive = false;
 
 function tr(zh, en) {
   return language === "zh" ? zh : en;
@@ -128,7 +131,22 @@ function createWindow() {
   // 我们才能知道"鼠标现在是不是悬在某颗泡泡上"。
   win.setIgnoreMouseEvents(true, { forward: true });
 
-  win.on("closed", () => { win = null; });
+  win.on("closed", () => {
+    win = null;
+    petHitbox = null;
+    rendererInteractive = false;
+  });
+}
+
+function updateMousePassthrough() {
+  if (!win || win.isDestroyed() || controlMode) return;
+  const cursor = screen.getCursorScreenPoint();
+  const bounds = win.getBounds();
+  const localX = cursor.x - bounds.x;
+  const localY = cursor.y - bounds.y;
+  const overPet = petHitbox &&
+    Math.hypot(localX - petHitbox.x, localY - petHitbox.y) <= petHitbox.radius;
+  win.setIgnoreMouseEvents(!(rendererInteractive || overPet), { forward: true });
 }
 
 function setControlMode(on) {
@@ -268,6 +286,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  hitTestTimerId = setInterval(updateMousePassthrough, 32);
   buildTray();
   timerId = setInterval(tickRestTimer, 1000);
 
@@ -287,7 +306,19 @@ app.whenReady().then(() => {
 */
 ipcMain.on("pet:interactive", (event, on) => {
   if (!win || controlMode) return;
-  win.setIgnoreMouseEvents(!on, { forward: true });
+  rendererInteractive = Boolean(on);
+  updateMousePassthrough();
+});
+
+ipcMain.on("pet:hitbox", (_event, bounds) => {
+  const next = {
+    x: Number(bounds?.x),
+    y: Number(bounds?.y),
+    radius: Number(bounds?.radius)
+  };
+  if (![next.x, next.y, next.radius].every(Number.isFinite) || next.radius < 1 || next.radius > 240) return;
+  petHitbox = next;
+  updateMousePassthrough();
 });
 
 ipcMain.on("pet:exit-control", () => setControlMode(false));
@@ -303,5 +334,7 @@ function setLanguage(nextLanguage) {
 
 // 桌宠没有任务栏图标，关掉最后一个窗口不等于退出 —— 退出走托盘菜单
 app.on("window-all-closed", () => {
+  if (hitTestTimerId) clearInterval(hitTestTimerId);
+  hitTestTimerId = null;
   if (process.platform !== "darwin") app.quit();
 });

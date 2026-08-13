@@ -16,6 +16,16 @@ contextBridge.exposeInMainWorld("meowPet", {
     ipcRenderer.send("pet:interactive", Boolean(on));
   },
 
+  // 把画布内桌宠的位置交给主进程。主进程直接读取系统光标做命中，
+  // 避免透明穿透窗口来不及收到第一次 pointerdown。
+  setPetHitbox(bounds) {
+    ipcRenderer.send("pet:hitbox", {
+      x: Number(bounds?.x),
+      y: Number(bounds?.y),
+      radius: Number(bounds?.radius)
+    });
+  },
+
   // 主进程通知：进入/退出控制界面模式
   onControlMode(handler) {
     ipcRenderer.on("pet:control-mode", (_event, on) => handler(Boolean(on)));
