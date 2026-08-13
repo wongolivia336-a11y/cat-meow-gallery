@@ -335,7 +335,14 @@
   }
 
   function beginDrag(x, y) {
-    if (mode !== "idle" || !hitTestAt(x, y)) return false;
+    if (!hitTestAt(x, y)) return false;
+    if (mode !== "idle") {
+      mode = "idle";
+      phaseStarted = performance.now();
+      const callback = done;
+      done = null;
+      callback?.();
+    }
     const p = lastPetPosition || idlePosition(window.innerWidth, window.innerHeight);
     wander = null;
     drag = { dx: x - p.x, dy: y - p.y };
