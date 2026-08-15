@@ -12,11 +12,42 @@
   const EYE = "#a8c98d";
   const sprites = new Map();
   const POSITION_KEY = "meow-gallery:pet-position";
-  const sheet = new Image();
-  const sheetCells = {
-    sleep: [0, 0], look: [1, 0], sit: [1, 0], lick: [2, 0],
-    "walk-1": [0, 1], "walk-2": [0, 1], puff: [1, 1], blow: [2, 1]
+  /*
+    ------------------------------------------------------------------
+    姿态帧
+    ------------------------------------------------------------------
+    原来是把 1536x1024 的整张精灵图按 3x2 刚性网格切。
+    但这张素材的内容并不老实待在格子里：
+
+      · walk 那只猫实际占 x 70..544，而格子只到 512 —— 尾巴被切掉 32px
+      · blow 的两颗泡泡横跨在 x 998..1077，格子边界在 1024 —— 半颗在隔壁
+      · 为了捞回那半颗泡泡加的补丁条取 x 952..1024，
+        而隔壁那只猫延伸到 994 —— 于是把人家的黑色尾尖也一起贴了过来
+
+    所以改成离线按连通域切好的独立帧（scripts/extract-frames.ps1），
+    运行时不再有任何取样魔法数字。
+
+    anchor 是身体的脚底中心，换姿态时以它对齐，猫才不会上下跳。
+    数值来自切图脚本，同时写在 assets/domi/frames.json 里。
+  */
+  const FRAME_DATA = {
+    sleep: { w: 461, h: 288, ax: 230, ay: 279 },
+    sit:   { w: 405, h: 448, ax: 202, ay: 439 },
+    paw:   { w: 394, h: 432, ax: 196, ay: 423 },
+    walk:  { w: 490, h: 365, ax: 244, ay: 356 },
+    puff:  { w: 396, h: 426, ax: 198, ay: 417 },
+    blow:  { w: 473, h: 388, ax: 274, ay: 379 }
   };
+
+  // 状态机里用的旧名字 -> 实际帧
+  const POSE_ALIAS = {
+    look: "sit", lick: "paw", "walk-1": "walk", "walk-2": "walk"
+  };
+
+  // 源图一个像素等于多少屏幕像素：旧代码把 512 的格子画成 280，沿用同一比例
+  const PX_PER_SOURCE = 280 / 512;
+
+  const frames = new Map();
   const mouse = { x: -1, y: -1 };
   let getItems = () => [];
   let mode = "idle";
@@ -44,8 +75,16 @@
   function init(options) {
     getItems = options?.getItems || getItems;
     ["sleep", "look", "walk-1", "walk-2", "sit", "puff", "blow"].forEach(makeSprite);
-    sheet.addEventListener("load", () => { sheetReady = true; });
-    sheet.src = "assets/domi-sprite-sheet-v1.png";
+    Object.keys(FRAME_DATA).forEach((pose) => {
+      const img = new Image();
+      const entry = { img, ready: false };
+      img.addEventListener("load", () => {
+        entry.ready = true;
+        sheetReady = true; // 至少有一帧可用就不再画程序化占位
+      });
+      img.src = `assets/domi/${pose}.png`;
+      frames.set(pose, entry);
+    });
     window.addEventListener("mousemove", (event) => {
       mouse.x = event.clientX;
       mouse.y = event.clientY;
@@ -462,67 +501,63 @@
     callback?.();
   }
 
+  /*
+    按 anchor（脚底中心）落位，整帧一次画完。
+    没有取样矩形，也就没有"取多了带进邻居、取少了切掉尾巴"这类问题。
+  */
   function paint(ctx, name, x, y, scale, alpha, motion = {}) {
-    const sprite = sprites.get(name) || makeSprite(name);
-    const size = sprite.size * scale;
+    const pose = POSE_ALIAS[name] || name;
+    const frame = frames.get(pose);
+    const data = FRAME_DATA[pose];
+
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     ctx.rotate(motion.rotate || 0);
     ctx.scale(motion.facing || 1, 1);
-    if (sheetReady && sheetCells[name]) {
-      const cellW = sheet.naturalWidth / 3;
-      const cellH = sheet.naturalHeight / 2;
-      const [column, row] = sheetCells[name];
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sheet, column * cellW, row * cellH, cellW, cellH, -size / 2, -size / 2, size, size);
-      if (name === "blow") {
-        // 两颗蓝泡泡越过了 blow 单元格左边界；只补回上方窄条。
-        // 之前扩大整张取样区会把相邻动作格下方的黑色尾巴也一起带进来。
-        const stripW = 72;
-        const stripH = 238;
-        ctx.drawImage(
-          sheet,
-          column * cellW - stripW, row * cellH, stripW, stripH,
-          -size / 2 - size * (stripW / cellW), -size / 2,
-          size * (stripW / cellW), size * (stripH / cellH)
-        );
-      }
+
+    if (frame?.ready && data) {
+      const px = PX_PER_SOURCE * scale;
+      // 旧实现把猫画在以 (x,y) 为中心、边长 280*scale 的方框里，
+      // 脚底大致落在方框下沿。这里对齐同一条基线，避免整体位置突变。
+      const baseline = (280 * scale) / 2;
+      ctx.drawImage(
+        frame.img,
+        -data.ax * px,
+        baseline - data.ay * px,
+        data.w * px,
+        data.h * px
+      );
     } else {
+      // 贴图还没加载完时的占位，仍用程序化画的那只
+      const sprite = sprites.get(name) || makeSprite(name);
+      const size = sprite.size * scale;
       ctx.drawImage(sprite.canvas, -size / 2, -size / 2, size, size);
     }
     ctx.restore();
   }
 
+  /*
+    走路。
+
+    原来是把 walk 格切成三条腿部切片各自错相位移动，做出交替步态。
+    但那些切片坐标是按刚性网格手调的，同一套数字既切不全尾巴、
+    又会取到隔壁格子，是这次渲染错位的主要来源之一。
+
+    这里先退回"整帧 + 上下起伏 + 轻微前倾"的稳妥做法：
+    不再有任何错误，观感也还算自然。
+    真正的分腿步态等逐帧素材（图生视频抽关键帧）回来后直接换成多帧播放，
+    那时只要往 FRAME_DATA 里加 walk-1..walk-N 即可，这段不用再改结构。
+  */
   function paintWalk(ctx, x, y, scale, alpha, phase, motion = {}) {
-    if (!sheetReady) return paint(ctx, "walk-1", x, y, scale, alpha, motion);
-    const cell = 512;
-    const size = 280 * scale;
-    const gait = Math.sin(phase * Math.PI);
-    const counter = Math.sin((phase + 1) * Math.PI);
-    const frontX = gait * 12 * scale;
-    const rearX = counter * 10 * scale;
-    const frontY = -Math.max(0, gait) * 8 * scale;
-    const rearY = -Math.max(0, counter) * 7 * scale;
-    const sourceY = 512;
-
+    const gait = Math.sin(phase * Math.PI * 2);
     ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(x, y);
-    ctx.rotate(motion.rotate || 0);
-    ctx.scale(motion.facing || 1, 1);
-    ctx.imageSmoothingEnabled = false;
-
-    // 头、背与尾巴保持稳定，四肢以下用两组相反相位移动，形成真正的交替步态。
-    ctx.drawImage(sheet, 0, sourceY, cell, 346, -size / 2, -size / 2, size, size * (346 / cell));
-    drawWalkSlice(ctx, 38, 274, 205, 238, -size / 2 + size * (38 / cell) + frontX, -size / 2 + size * (274 / cell) + frontY, size, cell);
-    drawWalkSlice(ctx, 200, 270, 178, 242, -size / 2 + size * (200 / cell) + rearX, -size / 2 + size * (270 / cell) + rearY, size, cell);
-    drawWalkSlice(ctx, 366, 250, 146, 262, -size / 2 + size * (366 / cell), -size / 2 + size * (250 / cell), size, cell);
+    ctx.translate(0, -Math.abs(gait) * 5 * scale); // 每一步的轻微腾空
+    paint(ctx, "walk", x, y, scale, alpha, {
+      ...motion,
+      rotate: (motion.rotate || 0) + gait * 0.03 // 身体随步子前后微摆
+    });
     ctx.restore();
-  }
-
-  function drawWalkSlice(ctx, sx, sy, sw, sh, dx, dy, size, cell) {
-    ctx.drawImage(sheet, sx, 512 + sy, sw, sh, dx, dy, size * (sw / cell), size * (sh / cell));
   }
 
   function mix(a, b, t) { return a + (b - a) * t; }

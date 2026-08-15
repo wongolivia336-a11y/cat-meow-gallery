@@ -1,0 +1,38 @@
+{
+  "blow": {
+    "h": 388,
+    "anchorX": 274.0,
+    "w": 473,
+    "anchorY": 379
+  },
+  "sleep": {
+    "h": 288,
+    "anchorX": 230.0,
+    "w": 461,
+    "anchorY": 279
+  },
+  "puff": {
+    "h": 426,
+    "anchorX": 198.0,
+    "w": 396,
+    "anchorY": 417
+  },
+  "walk": {
+    "h": 365,
+    "anchorX": 244.0,
+    "w": 490,
+    "anchorY": 356
+  },
+  "sit": {
+    "h": 448,
+    "anchorX": 202.0,
+    "w": 405,
+    "anchorY": 439
+  },
+  "paw": {
+    "h": 432,
+    "anchorX": 196.0,
+    "w": 394,
+    "anchorY": 423
+  }
+}

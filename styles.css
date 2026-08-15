@@ -207,14 +207,21 @@ body.is-pet.is-control .app-shell {
   pointer-events: auto;
 }
 
-/* 控制界面模式下给一块半透明底，否则表单浮在桌面上完全看不清 */
-body.is-pet.is-control::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  background: rgba(253, 252, 249, 0.86);
-  pointer-events: none;
+/*
+  控制界面模式下**不要**加全屏遮罩。
+
+  之前这里有一层 rgba(253,252,249,.86) 的全屏底，z-index 和 #bubbleCanvas
+  同为 1，但 DOM 顺序在后 —— 于是整片泡泡被压在一层牛奶色玻璃下面。
+  可读性应该由面板自己的底色解决，不该拿整个泡泡场去换。
+
+  现在的层级：桌面 → 泡泡(1) → 面板(2，各自有不透明底)。
+  面板打开时泡泡仍在表层，空白处点下去照样能戳破。
+*/
+body.is-pet.is-control .filter-panel,
+body.is-pet.is-control .app-bar,
+body.is-pet.is-control .record-bar {
+  /* 桌面背景什么都可能有，给面板一点投影把它从背景里拉出来 */
+  filter: drop-shadow(0 6px 18px rgba(63, 58, 52, 0.28));
 }
 
 .app-bar {
