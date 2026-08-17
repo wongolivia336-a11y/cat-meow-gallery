@@ -582,6 +582,15 @@
   function spawn(item, instance, atEdge, placement) {
     const t = traitsOf(item, instance);
     if (placement?.radiusScale) t.radius *= placement.radiusScale;
+    /*
+      仪式里的泡泡要和棒口成比例，所以把半径压进一个窄区间。
+      仍然保留"录得越久泡泡越大"的映射，只是幅度收窄 ——
+      完全抹平会丢掉这个产品最核心的数据可视化，
+      不收窄又会吹出比多米还大的泡泡。
+    */
+    if (placement?.radiusRange) {
+      t.radius = clamp(t.radius, placement.radiusRange[0], placement.radiusRange[1]);
+    }
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     const x = placement?.x ?? (atEdge ? (Math.random() < 0.5 ? t.radius + 4 : w - t.radius - 4) : rand(t.radius, w - t.radius));
@@ -629,8 +638,10 @@
       x: clamp(x, 24, canvas.clientWidth - 24),
       y: clamp(y, 24, canvas.clientHeight - 24),
       velocity: options?.velocity || options || { x: 1.4, y: -1.2 },
-      radiusScale: options?.radiusScale || 1
-      ,growFromMouth: true
+      radiusScale: options?.radiusScale || 1,
+      // 多米身高约 191px，泡泡直径压在 68..124 之间才像是从棒口吹出来的
+      radiusRange: [34, 62],
+      growFromMouth: true
     });
     return bubbles[bubbles.length - 1] || null;
   }
@@ -641,16 +652,32 @@
     else if (lastItems) setItems(lastItems);
   }
 
-  function ritualTargetCount(itemCount) {
-    return Math.max(0, Number(itemCount) || 0);
+  /*
+    ------------------------------------------------------------------
+    仪式里泡泡的大小与数量
+    ------------------------------------------------------------------
+    原来的做法是"数量严格等于录音数，只用尺寸表达收藏量"，
+    所以录音少时把半径放大到 2.25 倍去填屏幕。
+    结果 6 段录音时泡泡直径 270px，而多米才 191px 高 ——
+    一根小棒子吹出比自己还大的泡泡，动效再怎么调都会觉得假。
+
+    改成和泡泡场一致的原则：**尺寸保持合理，屏幕靠多吹几颗填满**。
+    录音不够就重复利用同一段声音，这和 setItems 里密度与数量解耦是一套逻辑。
+  */
+  const RITUAL_TARGET_RADIUS = 46; // 约为多米身高的四分之一，看起来才像"吹"出来的
+
+  function ritualRadiusScale() {
+    // traitsOf 给出的半径大致在 30..94，中位数约 58，归一到目标尺寸
+    return clamp(RITUAL_TARGET_RADIUS / 58, 0.55, 1.15);
   }
 
-  function ritualRadiusScale(itemCount) {
-    if (!itemCount) return 1;
+  function ritualTargetCount(itemCount) {
+    if (!itemCount) return 0;
     const area = window.innerWidth * window.innerHeight;
-    // 数量严格等于录音数，只用尺寸表达收藏量：少则大，多则逐渐缩小。
-    const scale = Math.sqrt((area * 0.38) / (itemCount * Math.PI * 62 * 62));
-    return clamp(scale, 0.62, 2.25);
+    const per = Math.PI * RITUAL_TARGET_RADIUS * RITUAL_TARGET_RADIUS;
+    const want = Math.round((area * 0.34) / per);
+    // 下限是录音数（每段至少吹一颗），上限 26 免得吹太久也太吵
+    return clamp(want, itemCount, 26);
   }
 
   function clearAll(immediate = false) {

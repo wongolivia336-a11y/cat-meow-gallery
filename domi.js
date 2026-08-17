@@ -47,6 +47,18 @@
   // 源图一个像素等于多少屏幕像素：旧代码把 512 的格子画成 280，沿用同一比例
   const PX_PER_SOURCE = 280 / 512;
 
+  // 参考身高（sit 帧）。六个姿态共用它算地面线，换姿态才不会上下跳。
+  const REFERENCE_HEIGHT = 448;
+
+  /*
+    吹泡棒棒口相对脚底 anchor 的偏移（源像素）。
+    是从 assets/domi/blow.png 里按颜色扫出来的实测值，不是估的：
+    棒子的红色环 bbox X 106..174 / Y 142..218，环心 (137,166)，anchor (274,379)。
+    泡泡必须从这里冒出来 —— 之前写死 ±112px，泡泡飘在猫头顶上，
+    看起来不像"吹"出来的，像"凭空出现"。
+  */
+  const WAND_OFFSET = { x: -137, y: -216 };
+
   const frames = new Map();
   const mouse = { x: -1, y: -1 };
   let getItems = () => [];
@@ -419,7 +431,12 @@
   function drawShowtime(ctx, now, w, h) {
     const entry = side < 0 ? -110 : w + 110;
     const stage = side < 0 ? w * 0.32 : w * 0.68;
-    const floor = h - 116;
+    /*
+      这是桌宠的中心线，不是地面线。
+      地面在它下方 (448/2)*PX_PER_SOURCE*0.78 ≈ 96px 处，
+      所以要留够余量，否则脚会被窗口底边切掉。
+    */
+    const floor = h - 170;
     const elapsed = now - phaseStarted;
     const duration = sequence.find(([name]) => name === mode)?.[1] || 1000;
     const t = Math.min(1, elapsed / duration);
@@ -437,12 +454,22 @@
       const wanted = Math.min(showtimeTarget, Math.floor(elapsed / 420) + 1);
       const items = getItems().filter((item) => item.audioUrl || item.audioKey);
       while (spawned < wanted && items.length) {
-        const item = items[spawned];
-        const mouthX = x + (side < 0 ? 112 : -112);
-        window.BubbleField.spawnAt(item, mouthX, floor - 96, {
+        // 目标数量可能超过录音数：循环取用，同一段声音会被吹成好几颗
+        const item = items[spawned % items.length];
+        /*
+          从棒口冒出来，位置由实测偏移算出，不再拍脑袋。
+          facing 翻转时 x 偏移要跟着镜像 —— 猫朝左，棒子就在它右边。
+        */
+        const facingNow = side < 0 ? -1 : 1;
+        const px = PX_PER_SOURCE * 0.78;
+        const ground = floor + (REFERENCE_HEIGHT / 2) * px;
+        const wandX = x + WAND_OFFSET.x * px * facingNow;
+        const wandY = ground + WAND_OFFSET.y * px;
+
+        window.BubbleField.spawnAt(item, wandX, wandY, {
           velocity: {
-            x: side < 0 ? 1.8 + spawned * 0.035 : -1.8 - spawned * 0.035,
-            y: -1.5 - spawned * 0.035
+            x: (side < 0 ? 1.15 : -1.15) + spawned * 0.03 * (side < 0 ? 1 : -1),
+            y: -1.05 - spawned * 0.03
           },
           radiusScale: showtimeRadiusScale
         });
@@ -518,13 +545,22 @@
 
     if (frame?.ready && data) {
       const px = PX_PER_SOURCE * scale;
-      // 旧实现把猫画在以 (x,y) 为中心、边长 280*scale 的方框里，
-      // 脚底大致落在方框下沿。这里对齐同一条基线，避免整体位置突变。
-      const baseline = (280 * scale) / 2;
+      /*
+        传进来的 y 是桌宠的中心（hitTest 和拖拽都按中心算），不是地面。
+        所以要把脚底 anchor 放到 y 下方一个**固定**距离处 ——
+
+        关键在"固定"：如果按各自帧高去算，sleep(288) 和 sit(448) 的
+        脚底会落在两条不同的线上，换姿态时猫会上下跳。
+        统一用 sit 当参考高度，六个姿态就共用同一条地面线。
+
+        （上一版误把 anchor 直接压在 y + 140*scale，比这里低一大截，
+        导致 showtime 时脚被窗口底边切掉。）
+      */
+      const ground = (REFERENCE_HEIGHT / 2) * px;
       ctx.drawImage(
         frame.img,
         -data.ax * px,
-        baseline - data.ay * px,
+        ground - data.ay * px,
         data.w * px,
         data.h * px
       );
