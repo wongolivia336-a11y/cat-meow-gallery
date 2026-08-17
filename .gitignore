@@ -9,3 +9,4 @@ android/app/build/
 android/app/src/main/assets/public/
 ios/App/DerivedData/
 ios/App/App/public/
+petlog.*
