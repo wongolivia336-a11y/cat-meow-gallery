@@ -29,6 +29,25 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
+/*
+  ------------------------------------------------------------------
+  Windows 上透明置顶窗口的卡顿元凶
+  ------------------------------------------------------------------
+  实测渲染循环本身是 145fps、零丢帧，但用户仍然看到卡顿 ——
+  因为问题不在渲染，在"合成器决定要不要把这一帧送上屏"。
+
+  CalculateNativeWinOcclusion 是 Chromium 在 Windows 上的遮挡检测：
+  它判断窗口被别的窗口挡住时就停止绘制。
+  而桌宠是一个全屏透明窗口，任何一个前台窗口都会让它误判为"被完全遮挡"，
+  于是画面直接冻住，恢复时又猛地跳一下 —— 体感就是掉帧。
+
+  这是 Electron 做覆盖层/桌宠时的标准修法。
+  必须在 app.whenReady() 之前调用，之后再设就无效了。
+*/
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-background-timer-throttling");
+
 let win = null;
 let tray = null;
 let controlMode = false; // true = 控制界面模式，整窗可交互
@@ -117,7 +136,13 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      /*
+        这个窗口 focusable:false，永远拿不到焦点，
+        Chromium 会把它当成"后台窗口"，把 requestAnimationFrame 降到 ~1fps。
+        桌宠就此变成幻灯片 —— 关掉节流。
+      */
+      backgroundThrottling: false
     }
   });
 

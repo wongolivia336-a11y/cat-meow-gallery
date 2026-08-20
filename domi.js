@@ -59,6 +59,35 @@
   */
   const WAND_OFFSET = { x: -137, y: -216 };
 
+  /*
+    ------------------------------------------------------------------
+    走路骨架
+    ------------------------------------------------------------------
+    上一版把整帧当一张贴图平移 + 上下起伏，腿完全不动。
+    渲染是 145fps 零丢帧，但"该动的没动"会被人眼读成卡顿 ——
+    体感上的不丝滑，根源常常不是帧率而是缺少运动。
+
+    这里把四条腿从干净的 walk 帧里切出来各自绕髋部摆动。
+    x 区间是扫描 assets/domi/walk.png 实测的（取 y>=280 的不透明列簇），
+    不是手调的魔法数字：52..160 / 179..233 / 265..365 / 391..436，
+    簇与簇之间完全没有内容，所以切开不会丢像素。
+
+    phase 用对角步态（猫的小跑）：前外 + 后内同相，前内 + 后外反相。
+    身体切到 288，腿从 264 开始切 —— 中间 24px 重叠，
+    身体后画盖住腿旋转时露出的接缝。
+  */
+  const WALK_RIG = {
+    bodyBottom: 288,
+    legTop: 264,
+    swing: 0.13,
+    legs: [
+      { x: 46,  w: 122, phase: 0.0 },  // 前·外
+      { x: 174, w: 66,  phase: 0.5 },  // 前·内
+      { x: 259, w: 114, phase: 0.5 },  // 后·外
+      { x: 385, w: 58,  phase: 0.0 }   // 后·内
+    ]
+  };
+
   const frames = new Map();
   const mouse = { x: -1, y: -1 };
   let getItems = () => [];
@@ -78,6 +107,9 @@
   let nextWanderAt = 0;
   let lastPetPosition = null;
   let lastHitboxReport = 0;
+  let wasAwake = false;      // 上一帧鼠标是否在感应范围内，用来检测"刚被吵醒"
+  let wakeAt = 0;
+  let dragSwing = 0;         // 拖拽时的横向摆动量，松手后衰减回 0
 
   const sequence = [
     ["walk-in", 2500], ["settle", 900], ["blow", 3600],
@@ -300,6 +332,25 @@
   }
 
   function drawIdle(ctx, now, w, h) {
+    /*
+      拖拽跟随：追赶，不瞬移。
+      直接把猫贴到光标上会像在拖一个图标；
+      留一点滞后再加上横向速度带来的摆动，才像"拎着一只有重量的猫"。
+    */
+    if (drag && Number.isFinite(drag.tx)) {
+      const cur = customPosition
+        ? { x: customPosition.x * w, y: customPosition.y * h }
+        : { x: drag.tx, y: drag.ty };
+      const nx = cur.x + (drag.tx - cur.x) * 0.22;
+      const ny = cur.y + (drag.ty - cur.y) * 0.22;
+      // 横向速度 -> 身体摆动幅度，松手后自然衰减回 0
+      dragSwing = clampRange(dragSwing * 0.82 + (nx - cur.x) * 0.045, -1, 1);
+      customPosition = { x: nx / w, y: ny / h };
+    } else if (dragSwing !== 0) {
+      dragSwing *= 0.86;
+      if (Math.abs(dragSwing) < 0.002) dragSwing = 0;
+    }
+
     let p = idlePosition(w, h);
     if (!controlMode && !drag && !wander && now >= nextWanderAt) startWander(now, w, h, p);
     if (wander) {
@@ -317,14 +368,44 @@
       if (progress >= 1) finishWander(now);
       return;
     }
-    const awake = mouse.x >= 0 && Math.hypot(mouse.x - p.x, mouse.y - p.y) < 260;
+    const distance = mouse.x >= 0 ? Math.hypot(mouse.x - p.x, mouse.y - p.y) : Infinity;
+    const awake = distance < 260;
     lastPetPosition = p;
     reportHitbox(p, 78);
+
+    /*
+      悬停反应。
+      只换一张"睁眼"贴图是不够的 —— 让它有反应的是这三件事：
+        1. 转身面向你（朝向翻转）
+        2. 被吵醒时惊了一下（弹性缩放，只在刚进入范围的那一瞬）
+        3. 越靠近越往你这边探身（倾斜随距离连续变化）
+      三个都是连续量，不是开关，所以不会有突兀的状态跳变。
+    */
+    if (awake && !wasAwake) wakeAt = now;
+    wasAwake = awake;
+
+    // 被吵醒的一激灵：过阻尼弹簧，420ms 内收敛
+    const sinceWake = now - wakeAt;
+    const startle = awake && sinceWake < 420
+      ? Math.sin((sinceWake / 420) * Math.PI * 2) * Math.exp(-sinceWake / 150) * 0.09
+      : 0;
+
+    // 越近探身越多，最多约 5 度
+    const closeness = awake ? Math.max(0, 1 - distance / 260) : 0;
+    const lean = drag ? -0.035 : closeness * 0.085 * (mouse.x < p.x ? 1 : -1);
+
     const lickMoment = Math.floor(now / 1400) % 13 === 10;
     const pose = awake ? "look" : lickMoment ? "lick" : "sleep";
     const breath = awake ? 1 : 1 + Math.sin(now / 900) * 0.018;
     const dragLift = drag ? 7 : 0;
-    paint(ctx, drag ? "look" : pose, p.x, p.y - dragLift, 0.46 * breath, 1, { rotate: drag ? -0.035 : 0 });
+
+    // 醒着就面向鼠标；睡着不动，猫睡觉不会因为你走过就翻身
+    const facing = drag ? (dragSwing > 0 ? 1 : -1) : awake ? (mouse.x < p.x ? -1 : 1) : 1;
+
+    paint(ctx, drag ? "look" : pose, p.x, p.y - dragLift, 0.46 * (breath + startle), 1, {
+      rotate: lean + dragSwing * 0.06,
+      facing
+    });
     if (!awake && !drag && pose === "sleep") drawSleepMarks(ctx, now, p.x, p.y);
   }
 
@@ -396,7 +477,7 @@
     }
     const p = lastPetPosition || idlePosition(window.innerWidth, window.innerHeight);
     wander = null;
-    drag = { dx: x - p.x, dy: y - p.y };
+    drag = { dx: x - p.x, dy: y - p.y, tx: p.x, ty: p.y };
     return true;
   }
 
@@ -404,9 +485,9 @@
     if (!drag) return false;
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const px = Math.max(76, Math.min(w - 76, x - drag.dx));
-    const py = Math.max(76, Math.min(h - 76, y - drag.dy));
-    customPosition = { x: px / w, y: py / h };
+    // 只记目标，位置由 drawIdle 缓动追上去 —— 这样才有滞后和摆动
+    drag.tx = Math.max(76, Math.min(w - 76, x - drag.dx));
+    drag.ty = Math.max(76, Math.min(h - 76, y - drag.dy));
     return true;
   }
 
@@ -586,16 +667,56 @@
     那时只要往 FRAME_DATA 里加 walk-1..walk-N 即可，这段不用再改结构。
   */
   function paintWalk(ctx, x, y, scale, alpha, phase, motion = {}) {
+    const frame = frames.get("walk");
+    const data = FRAME_DATA.walk;
+    // 贴图没就绪就退回整帧，至少不会白屏
+    if (!frame?.ready || !data) return paint(ctx, "walk", x, y, scale, alpha, motion);
+
+    const px = PX_PER_SOURCE * scale;
+    const ground = (REFERENCE_HEIGHT / 2) * px;
     const gait = Math.sin(phase * Math.PI * 2);
+    // 落脚时身体下沉一点点，是"有重量"的关键，比腿摆本身更重要
+    const bob = Math.abs(Math.sin(phase * Math.PI)) * 4 * scale;
+
     ctx.save();
-    ctx.translate(0, -Math.abs(gait) * 5 * scale); // 每一步的轻微腾空
-    paint(ctx, "walk", x, y, scale, alpha, {
-      ...motion,
-      rotate: (motion.rotate || 0) + gait * 0.03 // 身体随步子前后微摆
-    });
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y - bob);
+    ctx.rotate((motion.rotate || 0) + gait * 0.018);
+    ctx.scale(motion.facing || 1, 1);
+
+    const ox = -data.ax * px;
+    const oy = ground - data.ay * px;
+    const legH = data.h - WALK_RIG.legTop;
+
+    // 先画腿：绕髋部旋转，脚尖划出弧线
+    for (const leg of WALK_RIG.legs) {
+      const swing = Math.sin((phase + leg.phase) * Math.PI * 2) * WALK_RIG.swing;
+      const pivotX = ox + (leg.x + leg.w / 2) * px;
+      const pivotY = oy + WALK_RIG.legTop * px;
+      ctx.save();
+      ctx.translate(pivotX, pivotY);
+      ctx.rotate(swing);
+      ctx.translate(-pivotX, -pivotY);
+      ctx.drawImage(
+        frame.img,
+        leg.x, WALK_RIG.legTop, leg.w, legH,
+        ox + leg.x * px, oy + WALK_RIG.legTop * px,
+        leg.w * px, legH * px
+      );
+      ctx.restore();
+    }
+
+    // 再画身体，盖住腿旋转时在髋部露出的接缝
+    ctx.drawImage(
+      frame.img,
+      0, 0, data.w, WALK_RIG.bodyBottom,
+      ox, oy, data.w * px, WALK_RIG.bodyBottom * px
+    );
+
     ctx.restore();
   }
 
+  function clampRange(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function mix(a, b, t) { return a + (b - a) * t; }
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
   function smoothstep(t) {
