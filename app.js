@@ -98,6 +98,7 @@ function init() {
   restoreSettings();
   renderMoodChips();
   setupDropdowns();
+  setupBubbleMenu();
   bindEvents();
   window.meowPet?.setLanguage?.(window.I18n?.language);
 
@@ -108,7 +109,7 @@ function init() {
     // 破裂动画结束、泡泡重新飘回来时，把播放次数落盘
     onPopEnd: () => persist(),
     // 长按收藏
-    onLongPress: (item) => toggleFavorite(item),
+    onLongPress: (item, at) => openBubbleMenu(item, at),
     onEmpty: () => window.clearTimeout(state.petClearTimer)
   });
 
@@ -167,6 +168,13 @@ function cacheElements() {
   els.saveForm = document.querySelector("#saveForm");
   els.discardDraft = document.querySelector("#discardDraft");
   els.toast = document.querySelector("#toast");
+  els.bubbleMenu = document.querySelector("#bubbleMenu");
+  els.bubbleMenuTitle = document.querySelector("#bubbleMenuTitle");
+  els.bubbleMenuActions = document.querySelector("#bubbleMenuActions");
+  els.bubbleMenuFav = document.querySelector("#bubbleMenuFav");
+  els.bubbleMenuDelete = document.querySelector("#bubbleMenuDelete");
+  els.bubbleRenameForm = document.querySelector("#bubbleRenameForm");
+  els.bubbleRenameInput = document.querySelector("#bubbleRenameInput");
 }
 
 function bindEvents() {
@@ -1243,6 +1251,135 @@ function migrateLegacyKeys() {
 }
 
 /* ====================================================================
+   长按泡泡 → 操作菜单（改名 / 收藏 / 删除）
+
+   短按戳破出声，长按管理。移动端没有右键也没有 hover，
+   长按是唯一自然的"第二动作"。
+
+   收藏原本挂在长按上，现在挪进菜单 —— 一个手势只该对应一个入口，
+   否则用户永远不知道长按到底会发生什么。
+   ==================================================================== */
+
+let menuItem = null;
+
+function openBubbleMenu(item, at) {
+  menuItem = item;
+  els.bubbleMenu.hidden = false;
+  els.bubbleRenameForm.hidden = true;
+  els.bubbleMenuActions.hidden = false;
+  els.bubbleMenuTitle.textContent = item.title;
+  els.bubbleMenuFav.textContent = item.favorite ? "取消圈起来" : "圈起来";
+  // 每次打开都重置二次确认，避免上次点了一半的状态残留
+  els.bubbleMenuDelete.dataset.confirm = "false";
+  els.bubbleMenuDelete.textContent = "删掉";
+
+  // 贴着泡泡弹出，但不许跑出屏幕
+  const menu = els.bubbleMenu;
+  const w = menu.offsetWidth || 220;
+  const h = menu.offsetHeight || 160;
+  const gap = (at?.radius || 60) + 12;
+  const x = clamp((at?.x ?? window.innerWidth / 2) - w / 2, 10, window.innerWidth - w - 10);
+  let y = (at?.y ?? window.innerHeight / 2) + gap;
+  if (y + h > window.innerHeight - 10) y = (at?.y ?? 0) - gap - h; // 下面放不下就翻到上面
+  menu.style.left = `${Math.round(x)}px`;
+  menu.style.top = `${Math.round(clamp(y, 10, window.innerHeight - h - 10))}px`;
+
+  wakeUp();
+}
+
+function closeBubbleMenu() {
+  menuItem = null;
+  els.bubbleMenu.hidden = true;
+}
+
+async function deleteMeow(item) {
+  // 音频本体也要删，否则 IndexedDB 会留一堆没人引用的 Blob 越积越大
+  if (item.audioKey) {
+    try {
+      await deleteAudioBlob(item.audioKey);
+    } catch (error) {
+      // 删不掉不该拦住条目本身被移除，最多是留一份孤儿数据
+    }
+    const cached = state.objectUrls.get(item.audioKey);
+    if (cached) {
+      URL.revokeObjectURL(cached);
+      state.objectUrls.delete(item.audioKey);
+    }
+  }
+  if (state.currentPlayingId === item.id) stopCurrentSound();
+  state.meows = state.meows.filter((entry) => entry.id !== item.id);
+  persist();
+  render();
+}
+
+function setupBubbleMenu() {
+  els.bubbleMenuActions.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-act]");
+    if (!button || !menuItem) return;
+    const item = menuItem;
+
+    if (button.dataset.act === "rename") {
+      els.bubbleMenuActions.hidden = true;
+      els.bubbleRenameForm.hidden = false;
+      els.bubbleRenameInput.value = item.title;
+      els.bubbleRenameInput.focus();
+      els.bubbleRenameInput.select();
+      return;
+    }
+
+    if (button.dataset.act === "favorite") {
+      toggleFavorite(item);
+      closeBubbleMenu();
+      return;
+    }
+
+    if (button.dataset.act === "delete") {
+      /*
+        删除不可撤销（音频 Blob 一并清掉），所以要二次确认。
+        用同一个按钮变红再点一次，比弹一个确认框轻，
+        手指也不用移动到别的地方。
+      */
+      if (button.dataset.confirm !== "true") {
+        button.dataset.confirm = "true";
+        button.textContent = "真的删掉？";
+        return;
+      }
+      const title = item.title;
+      closeBubbleMenu();
+      await deleteMeow(item);
+      showToast(`「${title}」吹散了。`);
+    }
+  });
+
+  els.bubbleRenameForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!menuItem) return;
+    const next = cleanText(els.bubbleRenameInput.value, menuItem.title);
+    menuItem.title = next;
+    persist();
+    render();
+    closeBubbleMenu();
+    showToast("改好了。");
+  });
+
+  // 点菜单以外的任何地方就关掉。用 capture 抢在 canvas 的戳破逻辑之前，
+  // 否则关菜单的那一下会顺手把泡泡戳破
+  window.addEventListener("pointerdown", (event) => {
+    if (els.bubbleMenu.hidden) return;
+    if (els.bubbleMenu.contains(event.target)) return;
+    event.stopPropagation();
+    closeBubbleMenu();
+  }, true);
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.bubbleMenu.hidden) {
+      event.preventDefault();
+      closeBubbleMenu();
+    }
+  });
+}
+
+/* ====================================================================
    内置示例声音
 
    这个产品的原则是"只有真实录音才算数" —— isCollectedRecording 会滤掉
@@ -1495,6 +1632,10 @@ async function withAudioStore(mode, operation) {
       reject(transaction.error);
     });
   });
+}
+
+function deleteAudioBlob(key) {
+  return withAudioStore("readwrite", (store) => store.delete(key));
 }
 
 function putAudioBlob(key, blob) {

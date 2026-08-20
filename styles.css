@@ -663,6 +663,108 @@ button:focus-visible {
   text-align: center;
 }
 
+/* ====================================================================
+   长按泡泡的操作菜单
+   贴着被按住的那颗泡泡弹出，用和其他手绘元素同一套抖动边框。
+   ==================================================================== */
+
+.bubble-menu {
+  position: fixed;
+  z-index: 40;
+  isolation: isolate;
+  width: min(220px, 68vw);
+  padding: 10px;
+  border-radius: 16px 13px 17px 14px;
+  pointer-events: auto;
+}
+
+.bubble-menu[hidden] {
+  display: none;
+}
+
+.bubble-menu::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border: var(--stroke) solid var(--line);
+  border-radius: inherit;
+  background: #fffdf8;
+  box-shadow: 3px 4px 0 rgba(63, 58, 52, 0.16);
+  filter: url(#doodle-3);
+}
+
+.bubble-menu-title {
+  margin: 2px 4px 8px;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  /* 名字可能很长，别把菜单撑变形 */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bubble-menu-actions {
+  display: grid;
+  gap: 4px;
+}
+
+.bubble-menu button[role="menuitem"] {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px 8px 12px 9px;
+  background: none;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.bubble-menu button[role="menuitem"]:hover,
+.bubble-menu button[role="menuitem"]:focus-visible {
+  background: rgba(249, 194, 46, 0.32);
+}
+
+/* 删除是不可撤销的，颜色上就该和另外两个不一样 */
+.bubble-menu button.is-danger {
+  color: var(--tomato);
+}
+
+.bubble-menu button.is-danger:hover,
+.bubble-menu button.is-danger:focus-visible {
+  background: rgba(244, 116, 77, 0.2);
+}
+
+/* 二次确认状态：整块变红，让人知道下一下是真的删 */
+.bubble-menu button.is-danger[data-confirm="true"] {
+  background: var(--tomato);
+  color: #fffdf8;
+}
+
+.bubble-menu-rename {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bubble-menu-rename[hidden] {
+  display: none;
+}
+
+.bubble-menu-rename input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bubble-menu-rename .primary-button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
 /* chip 上的多米小脸，和泡泡里那张是同一份代码画的 */
 .chip-face {
   width: 22px;

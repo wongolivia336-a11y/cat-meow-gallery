@@ -749,9 +749,14 @@
     pressTimer = setTimeout(() => {
       pressTimer = null;
       pressTarget = null;
-      // 长按：收藏，并给一点触觉反馈（支持的设备上）
+      // 长按：打开操作菜单，并给一点触觉反馈（支持的设备上）
       if (navigator.vibrate) navigator.vibrate(18);
-      handlers.onLongPress(b.item);
+      // 把泡泡此刻的屏幕位置一并交出去，菜单要贴着它弹出来
+      handlers.onLongPress(b.item, {
+        x: b.body.position.x,
+        y: b.body.position.y,
+        radius: b.radius
+      });
     }, LONG_PRESS_MS);
   }
 
