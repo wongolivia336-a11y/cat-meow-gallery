@@ -782,10 +782,13 @@ async function saveDraft() {
     }
   }
 
+  // 第一段真实录音存下的那一刻，示例整批退场
+  const retired = retireDemoSounds();
   state.meows.unshift(item);
   state.draft = null;
   persist();
   els.saveDialog.close();
+  if (retired) showToast("示例声音先退下，这里交给多米了。");
   render();
   showToast(t("toastSaved"));
 }
@@ -1239,11 +1242,177 @@ function migrateLegacyKeys() {
   }
 }
 
+/* ====================================================================
+   内置示例声音
+
+   这个产品的原则是"只有真实录音才算数" —— isCollectedRecording 会滤掉
+   旧版的 seed 和 mock，那个决定是对的，不该复活。
+
+   但没有猫、或者猫今天不配合的时候，打开是一片空白，
+   完全看不出这东西是干嘛的。所以补一类明确标记的 demo：
+   它们是**真实音频**（不是合成音），能戳破、能听见；
+   并且在用户存下第一段自己的录音时自动退场，绝不和真货混在一起。
+
+   全部 CC0 / 公有领域，来源与作者见 assets/sounds/CREDITS.md。
+   这个项目要真实发布，所以刻意避开了 CC BY-SA 这类传染性 copyleft
+   和一切来源不明的音频。
+   ==================================================================== */
+
+const DEMO_SOUNDS = [
+  { mood: "sweet",   file: "sweet.ogg",   title: "求你了喵",     tags: ["撒娇"] },
+  { mood: "food",    file: "food.ogg",    title: "开门开门开门", tags: ["急急"] },
+  { mood: "sleepy",  file: "sleepy.ogg",  title: "小小一声",     tags: ["奶音"] },
+  { mood: "purr",    file: "purr.ogg",    title: "呼噜发动机",   tags: ["呼噜"] },
+  { mood: "mystery", file: "mystery.ogg", title: "门缝里的嗯？", tags: ["疑惑"] },
+  { mood: "protest", file: "protest.wav", title: "暹罗猫的抗议", tags: ["拖长音"] }
+];
+
+function installDemoSounds() {
+  if (state.meows.length) return;
+  const now = Date.now();
+  state.meows = DEMO_SOUNDS.map((sound, index) => normalizeItem({
+    id: `demo-${sound.mood}`,
+    title: sound.title,
+    catName: "示例",
+    mood: sound.mood,
+    tags: sound.tags.concat("示例"),
+    note: "网上找来的公共素材。录下你自己的猫之后，它就退场了。",
+    duration: 3,
+    audioUrl: `assets/sounds/${sound.file}`,
+    source: "demo",
+    createdAt: new Date(now - index * 60000).toISOString()
+  }));
+  persist();
+  analyzeDemoSounds();
+}
+
+// 存下第一段真实录音时，示例整批退场 —— 不和真货混在一起
+function retireDemoSounds() {
+  const before = state.meows.length;
+  state.meows = state.meows.filter((item) => item.source !== "demo");
+  return state.meows.length !== before;
+}
+
+/*
+  示例的波形必须来自真实解码，不能用 generateWaveform 编。
+  泡泡的大小和颜色是从波形算出来的 —— 编一个波形，
+  "这颗泡泡代表这段声音"这件事就成了假的，而那正是这个产品的核心。
+  所以启动后异步解码真实文件，拿到响度分布和有声时长再回写。
+*/
+/*
+  从一段长录音里挑出"最值得听的那一小段"。
+
+  analyzeRecording 取的是首个到末个有声点 —— 对用户自己录的一声喵是对的，
+  但网上的公共素材常常是十几秒里散落着好几声，那样算出来会横跨整个文件。
+  戳破一颗泡泡然后等 12 秒，治愈感直接归零。
+
+  所以用滑动窗口找能量最高的 ~2 秒，再向两侧收缩到安静处，
+  避免从半个音节中间切进去。
+*/
+async function pickLoudestWindow(blob, maxSeconds = 2.2) {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext || !blob.size) return null;
+  const ctx = new AudioContext();
+  try {
+    const audioBuffer = await ctx.decodeAudioData((await blob.arrayBuffer()).slice(0));
+    const channel = audioBuffer.getChannelData(0);
+    const rate = audioBuffer.sampleRate;
+    const win = Math.max(1, Math.round(rate * 0.02)); // 20ms 一格，和 analyzeRecording 一致
+
+    const frames = [];
+    for (let i = 0; i < channel.length; i += win) {
+      const end = Math.min(channel.length, i + win);
+      let sum = 0;
+      for (let j = i; j < end; j += 1) sum += channel[j] * channel[j];
+      frames.push(Math.sqrt(sum / Math.max(1, end - i)));
+    }
+    if (frames.length < 4) return null;
+    // 文件本身就够短就别挑了，整段用；否则滑动窗口会退化出荒唐的结果
+    if (audioBuffer.duration <= maxSeconds * 1.15) return null;
+
+    const winFrames = Math.max(1, Math.round(maxSeconds / 0.02));
+    let bestStart = 0;
+    let bestSum = -1;
+    let running = 0;
+    for (let i = 0; i < frames.length; i += 1) {
+      running += frames[i];
+      if (i >= winFrames) running -= frames[i - winFrames];
+      if (i >= winFrames - 1 && running > bestSum) {
+        bestSum = running;
+        bestStart = i - winFrames + 1;
+      }
+    }
+
+    const sorted = [...frames].sort((a, b) => a - b);
+    const floor = sorted[Math.floor(sorted.length * 0.1)] || 0;
+    const peak = sorted[sorted.length - 1] || 0;
+    const threshold = Math.max(floor * 2.5, peak * 0.05);
+
+    let s = bestStart;
+    let e = Math.min(frames.length - 1, bestStart + winFrames - 1);
+    while (s < e && frames[s] < threshold) s += 1;
+    while (e > s && frames[e] < threshold) e -= 1;
+
+    const trimStart = Math.max(0, (s * win) / rate - 0.05);
+    const trimEnd = Math.min(audioBuffer.duration, ((e + 1) * win) / rate + 0.15);
+    // 收缩过头切出个几十毫秒的碎片就当失败，交给整段分析兜底
+    if (trimEnd - trimStart < 0.35) return null;
+
+    const from = Math.floor(trimStart * rate);
+    const to = Math.max(from + 1, Math.floor(trimEnd * rate));
+    const bucket = Math.max(1, Math.floor((to - from) / 12));
+    const waveform = Array.from({ length: 12 }, (_, index) => {
+      const bs = from + index * bucket;
+      const be = Math.min(to, bs + bucket);
+      let sum = 0;
+      for (let c = bs; c < be; c += 1) sum += Math.abs(channel[c]);
+      return Math.max(0.16, Math.min(0.95, (sum / Math.max(1, be - bs)) * 3.6));
+    });
+
+    return { waveform, trimStart, trimEnd, speechDuration: trimEnd - trimStart };
+  } catch (error) {
+    return null;
+  } finally {
+    ctx.close();
+  }
+}
+
+async function analyzeDemoSounds() {
+  const demos = state.meows.filter((item) => item.source === "demo");
+  if (!demos.length) return;
+  let changed = false;
+
+  for (const item of demos) {
+    try {
+      const response = await fetch(item.audioUrl);
+      if (!response.ok) continue;
+      const blob = await response.blob();
+      // 示例是网上的长录音，要挑片段；解不开就退回整段分析
+      const info = (await pickLoudestWindow(blob)) || (await analyzeRecording(blob));
+      item.waveform = info.waveform;
+      item.trimStart = info.trimStart;
+      item.trimEnd = info.trimEnd;
+      if (info.speechDuration > 0.4) {
+        item.duration = Math.max(1, Math.round(info.speechDuration));
+      }
+      changed = true;
+    } catch (error) {
+      // 单个文件解不开不该拦住其余的
+    }
+  }
+
+  if (changed) {
+    persist();
+    render();
+  }
+}
+
 function restore() {
   migrateLegacyKeys();
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     state.meows = [];
+    installDemoSounds();
     return;
   }
 
@@ -1257,6 +1426,10 @@ function restore() {
   } catch (error) {
     state.meows = [];
   }
+
+  // 空的（新装、或刚清空）就补上示例，让人一眼看懂这是什么产品
+  if (!state.meows.length) installDemoSounds();
+  else if (state.meows.some((item) => item.source === "demo")) analyzeDemoSounds();
 
   hydrateAudioUrls().then(render);
 }

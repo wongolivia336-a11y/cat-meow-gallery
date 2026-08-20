@@ -170,7 +170,7 @@
     const mood = moods.find((m) => m.id === item.mood) || moods[0] || { hue: 200 };
 
     return {
-      radius: clamp((40 + item.duration * 3.2 + loudness * 20) * (1 + jitter) * scale, 30 * scale, 94 * scale),
+      radius: clamp((48 + item.duration * 3.8 + loudness * 24) * (1 + jitter) * scale, 36 * scale, 112 * scale),
       hue: (mood.hue + Math.round(richness * 60) + Math.round(jitter * 26)) % 360,
       seed: hash(`${item.id}:${instance}`) % 9999
     };
@@ -191,7 +191,7 @@
     if (!itemCount) return 0;
     const area = window.innerWidth * window.innerHeight;
     const base = Math.min(window.innerWidth, window.innerHeight);
-    const avgR = base < 520 ? 46 : 68;
+    const avgR = base < 520 ? 54 : 80;
     const want = Math.round((area * coverage) / (Math.PI * avgR * avgR));
     // 上限 38：再多物理引擎和绘制都还撑得住，但视觉上已经太吵
     return clamp(want, Math.min(itemCount, 6), 38);
@@ -640,7 +640,7 @@
       velocity: options?.velocity || options || { x: 1.4, y: -1.2 },
       radiusScale: options?.radiusScale || 1,
       // 多米身高约 191px，泡泡直径压在 68..124 之间才像是从棒口吹出来的
-      radiusRange: [34, 62],
+      radiusRange: [42, 74],
       growFromMouth: true
     });
     return bubbles[bubbles.length - 1] || null;
@@ -664,7 +664,7 @@
     改成和泡泡场一致的原则：**尺寸保持合理，屏幕靠多吹几颗填满**。
     录音不够就重复利用同一段声音，这和 setItems 里密度与数量解耦是一套逻辑。
   */
-  const RITUAL_TARGET_RADIUS = 46; // 约为多米身高的四分之一，看起来才像"吹"出来的
+  const RITUAL_TARGET_RADIUS = 56; // 约为多米身高的四分之一，看起来才像"吹"出来的
 
   function ritualRadiusScale() {
     // traitsOf 给出的半径大致在 30..94，中位数约 58，归一到目标尺寸
